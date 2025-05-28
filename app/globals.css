@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@theme {
+  /* Tema claro (estilo Apple) */
+  --color-background: oklch(1 0 0); /* Branco puro */
+  --color-foreground: oklch(0.18 0.01 240); /* Quase preto */
+  
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.18 0.01 240);
+  
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.18 0.01 240);
+  
+  --color-primary: oklch(0.55 0.12 264); /* Azul Apple */
+  --color-primary-foreground: oklch(1 0 0);
+  
+  --color-secondary: oklch(0.98 0.01 240);
+  --color-secondary-foreground: oklch(0.35 0.01 240);
+  
+  --color-muted: oklch(0.95 0.01 240);
+  --color-muted-foreground: oklch(0.55 0.01 240);
+  
+  --color-accent: oklch(0.98 0.01 240);
+  --color-accent-foreground: oklch(0.35 0.01 240);
+  
+  --color-destructive: oklch(0.65 0.18 25); /* Vermelho Apple */
+  --color-destructive-foreground: oklch(1 0 0);
+  
+  --color-border: oklch(0.90 0.02 240);
+  --color-input: oklch(0.95 0.01 240);
+  --color-ring: oklch(0.55 0.12 264); /* Azul Apple */
+  
+  --radius: 0.75rem; /* Bordas mais arredondadas (estilo Apple) */
+}
+
+/* Tema escuro (estilo Apple) */
+.dark {
+  --color-background: oklch(0.15 0.01 240); /* Preto verdadeiro */
+  --color-foreground: oklch(1 0 0); /* Branco puro */
+  
+  --color-card: oklch(0.25 0.01 240);
+  --color-card-foreground: oklch(1 0 0);
+  
+  --color-popover: oklch(0.25 0.01 240);
+  --color-popover-foreground: oklch(1 0 0);
+  
+  --color-primary: oklch(0.6 0.15 264); /* Azul Apple */
+  --color-primary-foreground: oklch(1 0 0);
+  
+  --color-secondary: oklch(0.3 0.01 240);
+  --color-secondary-foreground: oklch(1 0 0);
+  
+  --color-muted: oklch(0.3 0.01 240);
+  --color-muted-foreground: oklch(0.7 0.01 240);
+  
+  --color-accent: oklch(0.3 0.01 240);
+  --color-accent-foreground: oklch(1 0 0);
+  
+  --color-destructive: oklch(0.7 0.2 25); /* Vermelho Apple */
+  --color-destructive-foreground: oklch(1 0 0);
+  
+  --color-border: oklch(0.3 0.01 240);
+  --color-input: oklch(0.25 0.01 240);
+  --color-ring: oklch(0.6 0.15 264); /* Azul Apple */
+}
+
+/* Estilos base */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  /* Estilos Apple para inputs e botões */
+  input, select, textarea {
+    font-weight: 450;
+  }
+  
+  button, .button {
+    font-weight: 500;
+  }
+}
+
+/* Animações e transições suaves */
+@layer components {
+  .card, .button, .input {
+    transition: all 0.2s ease;
+  }
+}
