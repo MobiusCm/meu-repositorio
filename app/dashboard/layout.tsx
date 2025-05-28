@@ -16,6 +16,7 @@ import {
   Bell,
   Sun,
   Moon,
+  Brain,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -122,31 +123,12 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
 
   // Links da navegação
   const navItems = [
-    {
-      title: t('navigation.dashboard'),
-      href: "/dashboard",
-      icon: Home,
-    },
-    {
-      title: t('navigation.groupAnalytics'),
-      href: "/groups",
-      icon: BarChart,
-    },
-    {
-      title: t('navigation.memberInsights'),
-      href: "/members",
-      icon: Users,
-    },
-    {
-      title: t('navigation.reports'),
-      href: "/reports",
-      icon: MessageSquare,
-    },
-    {
-      title: t('navigation.settings'),
-      href: "/settings",
-      icon: Settings,
-    },
+    { href: "/dashboard", icon: Home, title: t('navigation.dashboard') },
+    { href: "/dashboard/reports", icon: BarChart, title: t('navigation.reports') },
+    { href: "/dashboard/groups", icon: Users, title: t('navigation.groups') },
+    { href: "/dashboard/members", icon: MessageSquare, title: t('navigation.members') },
+    { href: "/admin/insights", icon: Brain, title: "Painel Insights" },
+    { href: "/dashboard/settings", icon: Settings, title: t('navigation.settings') },
   ];
 
   return (
