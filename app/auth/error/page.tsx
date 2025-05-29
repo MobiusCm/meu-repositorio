@@ -1,48 +1,45 @@
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { AlertTriangle } from "lucide-react"
 import Link from "next/link"
-import Image from "next/image"
+import { OmnysLogo } from "@/components/ui/omnys-logo"
 
-export default async function AuthErrorPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>
-}) {
-  const params = await searchParams;
-  const errorMessage = params.error || "Ocorreu um erro na autenticação"
-
+export default function AuthErrorPage() {
   return (
-    <div className="flex h-screen w-full flex-col items-center justify-center bg-background">
-      <div className="absolute top-10 md:top-16">
-        <Image 
-          src="/logo.svg" 
-          alt="001Dash Logo" 
-          width={40}
-          height={40} 
-          className="mx-auto"
-          priority
-        />
-      </div>
-      <Card className="w-full max-w-md border-none bg-background/80 backdrop-blur-sm shadow-sm">
-        <CardContent className="p-8 md:p-10 text-center">
-          <div className="mb-6 flex justify-center">
-            <div className="rounded-full bg-destructive/10 p-3">
+    <div className="min-h-screen flex items-center justify-center bg-background p-6">
+      <div className="w-full max-w-sm space-y-8">
+        {/* Logo */}
+        <div className="text-center">
+          <OmnysLogo size="xl" variant="gradient" className="mx-auto mb-2" />
+          <p className="text-sm text-muted-foreground">
+            Plataforma de análise para WhatsApp
+          </p>
+        </div>
+
+        {/* Error Card */}
+        <Card className="border-0 shadow-sm bg-card">
+          <CardContent className="p-6 text-center">
+            <div className="mx-auto w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
               <AlertTriangle className="h-6 w-6 text-destructive" />
             </div>
-          </div>
-          <h1 className="mb-2 text-xl font-medium">Erro de autenticação</h1>
-          <p className="mb-6 text-sm text-muted-foreground">{errorMessage}</p>
-          <Button 
-            asChild
-            className="h-11 rounded-xl transition-all bg-primary hover:bg-primary/90"
-          >
-            <Link href="/auth/login">Voltar para login</Link>
-          </Button>
-        </CardContent>
-      </Card>
-      <div className="mt-8 text-center text-xs text-muted-foreground">
-        <p>&copy; {new Date().getFullYear()} 001Dash. Todos os direitos reservados.</p>
+            <CardTitle className="text-lg mb-2">Erro de Autenticação</CardTitle>
+            <CardDescription className="mb-6">
+              Ocorreu um erro durante o processo de autenticação. Tente novamente.
+            </CardDescription>
+            <Link href="/auth/login">
+              <Button className="w-full">
+                Voltar ao Login
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
+        {/* Footer */}
+        <div className="text-center">
+          <p className="text-xs text-muted-foreground">
+            &copy; {new Date().getFullYear()} Omnys. Todos os direitos reservados.
+          </p>
+        </div>
       </div>
     </div>
   )

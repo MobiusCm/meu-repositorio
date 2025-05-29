@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -22,146 +21,50 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import {
-  Brain,
   Settings,
   Users,
   BarChart3,
-  Bell,
-  Filter,
-  Search,
   Plus,
-  Trash2,
-  Edit,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
+  Search,
   Target,
-  Zap,
+  CheckCircle,
+  AlertTriangle,
   TrendingUp,
-  Activity,
-  Globe,
   MessageSquare,
-  X,
-  Database,
-  Eye
+  Zap,
+  Activity,
+  Filter,
+  Eye,
+  ArrowRight,
+  Shield,
+  Brain,
+  Sparkles,
+  Clock,
+  TrendingDown,
+  Edit3,
+  Trash2,
+  Play,
+  Pause,
+  MoreHorizontal,
+  ChevronRight
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
-import { useInsightPreferences } from '@/hooks/use-insight-preferences';
 import { useCustomInsights } from '@/hooks/use-custom-insights';
-import { InsightType } from '@/lib/insights-engine';
-import { FormulaBuilder } from '@/components/formula-builder';
-import { DataAnalyzer } from '@/components/data-analyzer';
-import { NativeInsightConfigurator } from '@/components/native-insight-configurator';
-import { InsightWizard } from '@/components/insight-wizard';
-import Link from 'next/link';
-
-// Tipos de insights disponíveis com metadados
-const AVAILABLE_INSIGHTS: Array<{
-  type: InsightType;
-  name: string;
-  description: string;
-  category: string;
-  icon: React.ComponentType<any>;
-  defaultEnabled: boolean;
-  difficulty: 'basic' | 'intermediate' | 'advanced';
-}> = [
-  {
-    type: 'participation_excellence',
-    name: 'Excelência de Participação',
-    description: 'Detecta grupos com alta participação dos membros',
-    category: 'Engajamento',
-    icon: CheckCircle,
-    defaultEnabled: true,
-    difficulty: 'basic'
-  },
-  {
-    type: 'participation_decline',
-    name: 'Declínio de Participação',
-    description: 'Alerta quando a participação está diminuindo',
-    category: 'Engajamento',
-    icon: AlertTriangle,
-    defaultEnabled: true,
-    difficulty: 'basic'
-  },
-  {
-    type: 'activity_peak',
-    name: 'Picos de Atividade',
-    description: 'Identifica dias com atividade excepcionalmente alta',
-    category: 'Atividade',
-    icon: TrendingUp,
-    defaultEnabled: true,
-    difficulty: 'basic'
-  },
-  {
-    type: 'growth_trend',
-    name: 'Tendência de Crescimento',
-    description: 'Analisa tendências de crescimento do grupo',
-    category: 'Crescimento',
-    icon: BarChart3,
-    defaultEnabled: true,
-    difficulty: 'intermediate'
-  },
-  {
-    type: 'engagement_pattern',
-    name: 'Padrões de Engajamento',
-    description: 'Analisa como os membros interagem',
-    category: 'Engajamento',
-    icon: Users,
-    defaultEnabled: false,
-    difficulty: 'intermediate'
-  },
-  {
-    type: 'member_concentration',
-    name: 'Concentração de Membros',
-    description: 'Verifica se poucos membros dominam as conversas',
-    category: 'Distribuição',
-    icon: Target,
-    defaultEnabled: false,
-    difficulty: 'intermediate'
-  },
-  {
-    type: 'time_pattern',
-    name: 'Padrões Temporais',
-    description: 'Analisa horários de maior atividade',
-    category: 'Temporal',
-    icon: Clock,
-    defaultEnabled: false,
-    difficulty: 'advanced'
-  },
-  {
-    type: 'content_quality',
-    name: 'Qualidade do Conteúdo',
-    description: 'Avalia a qualidade das mensagens',
-    category: 'Qualidade',
-    icon: MessageSquare,
-    defaultEnabled: false,
-    difficulty: 'advanced'
-  },
-  {
-    type: 'anomaly_detection',
-    name: 'Detecção de Anomalias',
-    description: 'Detecta comportamentos anômalos',
-    category: 'Anomalias',
-    icon: Zap,
-    defaultEnabled: false,
-    difficulty: 'advanced'
-  }
-];
+import { InsightWizardV2 } from '@/components/insight-wizard-v2';
+import { useRouter } from 'next/navigation';
+import { 
+  InsightRegistry, 
+  VerifiedInsightData,
+  VerifiedInsight 
+} from '@/components/insights/types/InsightRegistry';
+import { useVerifiedInsights } from '@/hooks/use-verified-insights';
+import { fetchPreProcessedStats } from '@/lib/analysis';
+import { DataProcessor } from '@/components/insights/utils/DataProcessor';
+import { subDays } from 'date-fns';
+import { VerifiedInsightConfig } from '@/components/insights/types/VerifiedInsightConfig';
 
 interface Group {
   id: string;
@@ -169,42 +72,274 @@ interface Group {
   member_count?: number;
 }
 
+// Categorias de insights com design Apple-level
+const INSIGHT_CATEGORIES = [
+  {
+    id: 'all',
+    name: 'Todos',
+    description: 'Todos os insights disponíveis',
+    icon: Eye,
+    color: 'bg-gray-500',
+    lightColor: 'bg-gray-50 border-gray-200',
+    darkColor: 'dark:bg-gray-800/50 dark:border-gray-700'
+  },
+  {
+    id: 'engagement',
+    name: 'Engajamento',
+    description: 'Participação e interação',
+    icon: Users,
+    color: 'bg-blue-500',
+    lightColor: 'bg-blue-50 border-blue-200',
+    darkColor: 'dark:bg-blue-950/20 dark:border-blue-800'
+  },
+  {
+    id: 'activity',
+    name: 'Atividade',
+    description: 'Volume e padrões de atividade',
+    icon: Activity,
+    color: 'bg-green-500',
+    lightColor: 'bg-green-50 border-green-200',
+    darkColor: 'dark:bg-green-950/20 dark:border-green-800'
+  },
+  {
+    id: 'growth',
+    name: 'Crescimento',
+    description: 'Tendências e evolução',
+    icon: TrendingUp,
+    color: 'bg-purple-500',
+    lightColor: 'bg-purple-50 border-purple-200',
+    darkColor: 'dark:bg-purple-950/20 dark:border-purple-800'
+  },
+  {
+    id: 'quality',
+    name: 'Qualidade',
+    description: 'Qualidade do conteúdo',
+    icon: Target,
+    color: 'bg-orange-500',
+    lightColor: 'bg-orange-50 border-orange-200',
+    darkColor: 'dark:bg-orange-950/20 dark:border-orange-800'
+  }
+];
+
+// Componente para card de insight verificado
+const VerifiedInsightCard = ({ insight, onConfigure }: { 
+  insight: VerifiedInsight;
+  onConfigure: (insight: VerifiedInsight) => void;
+}) => {
+  const getInsightIcon = (id: string) => {
+    switch (id) {
+      case 'participation_decline':
+        return TrendingDown;
+      case 'activity_peak':
+        return Zap;
+      case 'member_concentration':
+        return Users;
+      case 'growth_acceleration':
+        return TrendingUp;
+      default:
+        return Activity;
+    }
+  };
+
+  const getStatusColor = (priority: string) => {
+    switch (priority) {
+      case 'critical':
+        return 'bg-red-500';
+      case 'high':
+        return 'bg-orange-500';
+      case 'medium':
+        return 'bg-yellow-500';
+      case 'low':
+        return 'bg-green-500';
+      default:
+        return 'bg-gray-500';
+    }
+  };
+
+  const IconComponent = getInsightIcon(insight.id);
+
+  return (
+    <Card className="group border-0 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer bg-card">
+      <CardContent className="p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center relative">
+              <IconComponent className="h-6 w-6 text-white" />
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center">
+                <Shield className="h-2.5 w-2.5 text-white" />
+              </div>
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground leading-tight">
+                {insight.title}
+              </h3>
+              <Badge variant="secondary" className="mt-1 gap-1 bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-800/50">
+                <Shield className="h-3 w-3" />
+                Verificado
+              </Badge>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <div className={`w-3 h-3 rounded-full ${getStatusColor(insight.priority)}`} />
+            <Badge variant="outline" className="text-xs">
+              {insight.priority === 'critical' ? 'Crítico' : 
+               insight.priority === 'high' ? 'Alto' : 
+               insight.priority === 'medium' ? 'Médio' : 'Baixo'}
+            </Badge>
+          </div>
+        </div>
+
+        <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+          {insight.description}
+        </p>
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs">
+              {insight.category}
+            </Badge>
+            <Badge variant="secondary" className="text-xs">
+              {(insight.metadata.accuracy)}% precisão
+            </Badge>
+          </div>
+          
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onConfigure(insight)}
+            className="opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <Settings className="h-4 w-4 mr-1" />
+            Configurar
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+// Componente para card de insight customizado
+const CustomInsightCard = ({ insight, onEdit, onToggle, onDelete }: { 
+  insight: any;
+  onEdit: (insight: any) => void;
+  onToggle: (id: string, enabled: boolean) => void;
+  onDelete: (id: string) => void;
+}) => {
+  const getStatusColor = (priority: string) => {
+    switch (priority) {
+      case 'critical':
+        return 'bg-red-500';
+      case 'high':
+        return 'bg-orange-500';
+      case 'medium':
+        return 'bg-yellow-500';
+      case 'low':
+        return 'bg-green-500';
+      default:
+        return 'bg-gray-500';
+    }
+  };
+
+  return (
+    <Card className={`group border-0 shadow-sm hover:shadow-md transition-all duration-200 ${
+      insight.enabled ? 'bg-card' : 'bg-muted/30 opacity-75'
+    }`}>
+      <CardContent className="p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+              insight.enabled ? 'bg-purple-500' : 'bg-gray-400'
+            }`}>
+              <Brain className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground leading-tight">
+                {insight.name}
+              </h3>
+              <Badge variant="secondary" className="mt-1 gap-1">
+                <Sparkles className="h-3 w-3" />
+                Customizado
+              </Badge>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <div className={`w-3 h-3 rounded-full ${getStatusColor(insight.priority)}`} />
+            <Switch
+              checked={insight.enabled}
+              onCheckedChange={(checked) => onToggle(insight.id, checked)}
+            />
+          </div>
+        </div>
+
+        <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+          {insight.description}
+        </p>
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs">
+              {insight.category}
+            </Badge>
+            <Badge variant={insight.enabled ? "default" : "secondary"} className="text-xs">
+              {insight.enabled ? 'Ativo' : 'Inativo'}
+            </Badge>
+          </div>
+          
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onEdit(insight)}
+            >
+              <Edit3 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onDelete(insight.id)}
+              className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 export default function AdminInsightsPage() {
   const { toast } = useToast();
-  const {
-    preferences,
-    loading: preferencesLoading,
-    toggleInsight,
-    updateThreshold,
-    updateNotifications,
-    isInsightEnabled,
-    bulkToggle
-  } = useInsightPreferences();
-
+  const router = useRouter();
+  
+  // Hooks
   const {
     insights: customInsights,
     loading: customInsightsLoading,
-    saveCustomInsight
+    createInsight,
+    updateInsight,
+    deleteInsight,
+    toggleInsight,
+    getInsightStats
   } = useCustomInsights();
+  
+  const { getActiveInsightsForGroup } = useVerifiedInsights();
 
+  // Estados
   const [groups, setGroups] = useState<Group[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
-
-  // Estados para configuração
-  const [thresholdDialogOpen, setThresholdDialogOpen] = useState(false);
-  const [selectedInsightForConfig, setSelectedInsightForConfig] = useState<{
-    type: InsightType;
-    groupId: string;
-  } | null>(null);
-
-  // Novos estados para controlar a exibição dos configuradores e do analisador de dados
   const [showCustomInsightForm, setShowCustomInsightForm] = useState(false);
   const [editingInsight, setEditingInsight] = useState<any>(null);
-  const [showDataAnalyzer, setShowDataAnalyzer] = useState(false);
-  const [configuringNativeInsight, setConfiguringNativeInsight] = useState<string | null>(null);
+  const [verifiedInsightsData, setVerifiedInsightsData] = useState<VerifiedInsightData[]>([]);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [verifiedConfigOpen, setVerifiedConfigOpen] = useState(false);
+  const [selectedVerifiedInsight, setSelectedVerifiedInsight] = useState<VerifiedInsight | null>(null);
 
   // Buscar grupos
   useEffect(() => {
@@ -233,8 +368,149 @@ export default function AdminInsightsPage() {
     fetchGroups();
   }, [toast]);
 
-  // Filtrar insights baseado nos filtros
-  const filteredInsights = AVAILABLE_INSIGHTS.filter(insight => {
+  // Buscar insights verificados
+  useEffect(() => {
+    const fetchVerifiedInsights = async () => {
+      if (groups.length === 0) return;
+      
+      setInsightsLoading(true);
+      try {
+        const allInsights: VerifiedInsightData[] = [];
+        
+        // Analisar cada grupo para insights verificados
+        for (const group of groups.slice(0, 10)) { // Limitar para performance
+          try {
+            const endDate = new Date();
+            const startDate = subDays(endDate, 29); // 30 dias
+            
+            const stats = await fetchPreProcessedStats(group.id, startDate, endDate);
+            
+            const groupData = DataProcessor.convertToGroupAnalysisData(
+              group.id,
+              group.name,
+              stats,
+              { start: startDate, end: endDate, days: 30 }
+            );
+            
+            const activeInsights = getActiveInsightsForGroup(groupData);
+            allInsights.push(...activeInsights);
+          } catch (error) {
+            console.error(`Erro ao processar grupo ${group.name}:`, error);
+          }
+        }
+        
+        setVerifiedInsightsData(allInsights);
+      } catch (error) {
+        console.error('Erro ao buscar insights verificados:', error);
+      } finally {
+        setInsightsLoading(false);
+      }
+    };
+
+    fetchVerifiedInsights();
+  }, [groups, getActiveInsightsForGroup]);
+
+  // Estatísticas
+  const customStats = getInsightStats();
+  const verifiedInsights = InsightRegistry.getVerifiedInsights();
+  const totalVerifiedActive = verifiedInsightsData.length;
+
+  // Handlers
+  const handleSaveCustomInsight = async (insightData: any) => {
+    try {
+      if (editingInsight) {
+        const success = await updateInsight(editingInsight.id, insightData);
+        if (success) {
+          setEditingInsight(null);
+          setShowCustomInsightForm(false);
+        }
+        return success;
+      } else {
+        const success = await createInsight(insightData);
+        if (success) {
+          setShowCustomInsightForm(false);
+        }
+        return success;
+      }
+    } catch (error) {
+      console.error('Erro ao salvar insight:', error);
+      return false;
+    }
+  };
+
+  const handleEditInsight = (insight: any) => {
+    setEditingInsight(insight);
+    setShowCustomInsightForm(true);
+  };
+
+  const handleDeleteInsight = async (id: string) => {
+    if (window.confirm('Tem certeza que deseja excluir este insight?')) {
+      await deleteInsight(id);
+    }
+  };
+
+  const handleToggleCustomInsight = async (id: string, enabled: boolean) => {
+    const success = await toggleInsight(id, enabled);
+    if (!success) {
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível alterar o status do insight.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Função para configurar insight verificado
+  const handleConfigureVerifiedInsight = (insight: VerifiedInsight) => {
+    setSelectedVerifiedInsight(insight);
+    setVerifiedConfigOpen(true);
+  };
+
+  // Função para salvar configuração de insight verificado
+  const handleSaveVerifiedConfig = async (insightId: string, config: any): Promise<boolean> => {
+    try {
+      // Aqui você pode implementar a lógica para salvar as configurações no Supabase
+      // Por enquanto, vamos simular o sucesso
+      console.log('Salvando configuração do insight:', insightId, config);
+      
+      // Em uma implementação real, você salvaria na tabela insight_preferences
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Salvar preferências do usuário para este insight
+      const { error } = await supabase
+        .from('insight_preferences')
+        .upsert({
+          user_id: user.id,
+          group_id: 'all', // Para insights verificados, pode ser 'all' ou específico
+          insight_type: insightId,
+          enabled: config.enabled,
+          custom_threshold: { threshold: config.threshold },
+          notification_settings: config.notifications
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Erro ao salvar configuração:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível salvar as configurações.',
+        variant: 'destructive',
+      });
+      return false;
+    }
+  };
+
+  // Filtros
+  const filteredCustomInsights = customInsights.filter(insight => {
     const matchesSearch = insight.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          insight.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || insight.category === selectedCategory;
@@ -242,569 +518,402 @@ export default function AdminInsightsPage() {
     return matchesSearch && matchesCategory;
   });
 
-  // Categorias únicas
-  const categories = Array.from(new Set(AVAILABLE_INSIGHTS.map(i => i.category)));
-
-  // Estatísticas
-  const totalInsights = AVAILABLE_INSIGHTS.length;
-  const enabledInsights = AVAILABLE_INSIGHTS.reduce((count, insight) => {
-    if (selectedGroup === 'all') {
-      // Contar quantos grupos têm este insight ativado
-      return count + groups.filter(group => isInsightEnabled(insight.type, group.id)).length;
-    } else {
-      return count + (isInsightEnabled(insight.type, selectedGroup) ? 1 : 0);
-    }
-  }, 0);
-
-  // Toggle para todos os insights de uma categoria
-  const toggleCategory = async (category: string, enabled: boolean) => {
-    const categoryInsights = filteredInsights.filter(i => i.category === category);
-    const targetGroups = selectedGroup === 'all' ? groups : groups.filter(g => g.id === selectedGroup);
+  const filteredVerifiedInsights = verifiedInsights.filter(insight => {
+    const matchesSearch = insight.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         insight.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === 'all' || insight.category === selectedCategory;
     
-    const updates = [];
-    for (const insight of categoryInsights) {
-      for (const group of targetGroups) {
-        updates.push({
-          insightType: insight.type,
-          groupId: group.id,
-          enabled
-        });
-      }
-    }
+    return matchesSearch && matchesCategory;
+  });
 
-    const success = await bulkToggle(updates);
-    if (success) {
-      toast({
-        title: enabled ? 'Categoria ativada' : 'Categoria desativada',
-        description: `Todos os insights da categoria "${category}" foram ${enabled ? 'ativados' : 'desativados'}.`,
-      });
-    }
-  };
-
-  // Componente para card de insight configurável
-  const InsightCard = ({ insight, groupId }: { insight: typeof AVAILABLE_INSIGHTS[0], groupId: string }) => {
-    const enabled = isInsightEnabled(insight.type, groupId);
-    const IconComponent = insight.icon;
-    const group = groups.find(g => g.id === groupId);
-
+  if (loading) {
     return (
-      <Card className={`transition-all duration-200 ${enabled ? 'ring-2 ring-blue-500/20 bg-blue-50/30 dark:bg-blue-950/20' : 'opacity-70'}`}>
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center space-x-3">
-              <div className={`p-2 rounded-lg ${enabled ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-gray-100 dark:bg-gray-800'}`}>
-                <IconComponent className={`h-5 w-5 ${enabled ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'}`} />
-              </div>
-              <div>
-                <CardTitle className="text-sm font-medium">{insight.name}</CardTitle>
-                <CardDescription className="text-xs">{insight.description}</CardDescription>
-              </div>
+      <div className="min-h-screen bg-background">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center space-y-4">
+            <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto">
+              <Brain className="h-8 w-8 text-white animate-pulse" />
             </div>
-            <Switch
-              checked={enabled}
-              onCheckedChange={(checked) => toggleInsight(insight.type, groupId, checked)}
-              disabled={preferencesLoading}
-            />
-          </div>
-        </CardHeader>
-        
-        <CardContent className="pt-0">
-          <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-            <Badge variant="outline" className="text-xs">
-              {insight.category}
-            </Badge>
-            <Badge variant={insight.difficulty === 'basic' ? 'default' : insight.difficulty === 'intermediate' ? 'secondary' : 'destructive'} className="text-xs">
-              {insight.difficulty === 'basic' ? 'Básico' : insight.difficulty === 'intermediate' ? 'Intermediário' : 'Avançado'}
-            </Badge>
-          </div>
-          
-          {selectedGroup !== 'all' && (
-            <div className="flex gap-2 mt-3">
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs"
-                onClick={() => {
-                  setSelectedInsightForConfig({ type: insight.type, groupId });
-                  setThresholdDialogOpen(true);
-                }}
-                disabled={!enabled}
-              >
-                <Settings className="h-3 w-3 mr-1" />
-                Configurar
-              </Button>
-            </div>
-          )}
-          
-          {selectedGroup === 'all' && group && (
-            <div className="text-xs text-muted-foreground mt-2">
-              Grupo: {group.name}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-            <div className="flex items-center space-x-2">
-              <Badge 
-                variant={insight.difficulty === 'basic' ? 'default' : insight.difficulty === 'intermediate' ? 'secondary' : 'destructive'}
-                className="text-xs"
-              >
-                {insight.difficulty === 'basic' ? 'Básico' : insight.difficulty === 'intermediate' ? 'Inter.' : 'Avançado'}
-              </Badge>
-              <Badge variant="outline" className="text-xs">
-                {insight.category}
-              </Badge>
-            </div>
-            
-            <div className="flex items-center space-x-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 w-8 p-0"
-                onClick={() => setConfiguringNativeInsight(insight.type)}
-                title="Configurar parâmetros"
-              >
-                <Settings className="h-3 w-3" />
-              </Button>
-              
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 w-8 p-0"
-                onClick={() => setSelectedInsightForConfig({ type: insight.type, groupId })}
-                title="Configurar thresholds"
-              >
-                <Target className="h-3 w-3" />
-              </Button>
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold">Carregando Smart Insights</h3>
+              <p className="text-muted-foreground text-sm">Preparando sua experiência...</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
-    );
-  };
-
-  if (loading || preferencesLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <Brain className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Carregando painel administrativo...</h3>
-          <p className="text-muted-foreground">Aguarde enquanto carregamos suas configurações</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Administração de Insights</h1>
-          <p className="text-muted-foreground">
-            Configure e personalize os insights inteligentes para seus grupos
-          </p>
+    <div className="container mx-auto p-6 max-w-7xl">
+      {/* Header Apple-Style */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold text-foreground tracking-tight">
+              Smart Insights
+            </h1>
+            <p className="mt-2 text-muted-foreground">
+              Configure e monitore insights inteligentes para seus grupos
+            </p>
+          </div>
+          
+          <Button 
+            onClick={() => {
+              setEditingInsight(null);
+              setShowCustomInsightForm(true);
+            }}
+            className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Novo Insight
+          </Button>
         </div>
-        <Button className="gap-2" onClick={() => setShowCustomInsightForm(true)}>
-          <Plus className="h-4 w-4" />
-          Criar Insight Customizado
-        </Button>
       </div>
 
       {/* Estatísticas */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Insights</CardTitle>
-            <Brain className="h-4 w-4 text-muted-foreground" />
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <Card className="border-0 shadow-sm bg-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              Insights Verificados
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalInsights}</div>
-            <p className="text-xs text-muted-foreground">Tipos disponíveis</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Insights Ativos</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{enabledInsights}</div>
-            <p className="text-xs text-muted-foreground">
-              {selectedGroup === 'all' ? 'Ativações totais' : 'Ativados neste grupo'}
+            <div className="text-3xl font-bold">{verifiedInsights.length}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {totalVerifiedActive} ativos
             </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Grupos</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+        <Card className="border-0 shadow-sm bg-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Sparkles className="h-4 w-4" />
+              Insights Customizados
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{groups.length}</div>
-            <p className="text-xs text-muted-foreground">Grupos disponíveis</p>
+            <div className="text-3xl font-bold">{customStats.total}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {customStats.enabled} ativos
+            </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Categorias</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+        <Card className="border-0 shadow-sm bg-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Grupos Monitorados
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{categories.length}</div>
-            <p className="text-xs text-muted-foreground">Categorias de insights</p>
+            <div className="text-3xl font-bold">{groups.length}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              grupos cadastrados
+            </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Taxa de Adoção</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+        <Card className="border-0 shadow-sm bg-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Activity className="h-4 w-4" />
+              Insights Ativos
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">
-                {Math.round((enabledInsights / (totalInsights * (selectedGroup === 'all' ? groups.length : 1))) * 100)}%
-              </div>
-              <div className="text-xs text-muted-foreground">Taxa de Adoção</div>
-            </div>
+            <div className="text-3xl font-bold">{totalVerifiedActive + customStats.enabled}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              total ativo
+            </p>
           </CardContent>
         </Card>
-
-        {/* Botões de Ação Rápida */}
-        <div className="flex gap-2 mt-4">
-          <Button 
-            onClick={() => setShowDataAnalyzer(true)}
-            variant="outline" 
-            size="sm"
-            className="flex-1"
-          >
-            <Database className="h-4 w-4 mr-2" />
-            Explorar Dados
-          </Button>
-          
-          <Button 
-            onClick={() => setShowCustomInsightForm(true)}
-            variant="outline" 
-            size="sm"
-            className="flex-1"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Criar Insight
-          </Button>
-          
-          <Button 
-            asChild
-            variant="outline" 
-            size="sm"
-            className="flex-1"
-          >
-            <Link href="/admin/insights/custom">
-              <Eye className="h-4 w-4 mr-2" />
-              Ver Todos
-            </Link>
-          </Button>
-        </div>
       </div>
 
-      {/* Filtros */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Filtros e Configurações</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-4">
-            <div className="space-y-2">
-              <Label htmlFor="group-filter">Grupo</Label>
-              <Select value={selectedGroup} onValueChange={setSelectedGroup}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecionar grupo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os grupos</SelectItem>
-                  {groups.map(group => (
-                    <SelectItem key={group.id} value={group.id}>
-                      {group.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="category-filter">Categoria</Label>
-              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecionar categoria" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas as categorias</SelectItem>
-                  {categories.map(category => (
-                    <SelectItem key={category} value={category}>
-                      {category}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="search">Buscar</Label>
-              <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="search"
-                  placeholder="Buscar insights..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Ações em lote</Label>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (selectedCategory !== 'all') {
-                      toggleCategory(selectedCategory, true);
-                    }
-                  }}
-                  disabled={selectedCategory === 'all'}
-                >
-                  Ativar categoria
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (selectedCategory !== 'all') {
-                      toggleCategory(selectedCategory, false);
-                    }
-                  }}
-                  disabled={selectedCategory === 'all'}
-                >
-                  Desativar categoria
-                </Button>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Lista de Insights */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">
-            Insights Disponíveis ({filteredInsights.length})
-          </h2>
+      {/* Controles de Filtro */}
+      <div className="flex flex-col sm:flex-row gap-4 mb-6">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar insights..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
         </div>
-
-        {selectedGroup === 'all' ? (
-          // Visualização por grupo quando "todos" está selecionado
-          <div className="space-y-6">
-            {groups.map(group => (
-              <Card key={group.id}>
-                <CardHeader>
-                  <CardTitle className="text-lg">{group.name}</CardTitle>
-                  <CardDescription>
-                    {group.member_count ? `${group.member_count} membros` : 'Grupo'}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {filteredInsights.map(insight => (
-                      <InsightCard
-                        key={`${insight.type}-${group.id}`}
-                        insight={insight}
-                        groupId={group.id}
-                      />
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+        
+        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+          <SelectTrigger className="w-full sm:w-48">
+            <SelectValue placeholder="Categoria" />
+          </SelectTrigger>
+          <SelectContent>
+            {INSIGHT_CATEGORIES.map((category) => (
+              <SelectItem key={category.id} value={category.id}>
+                <div className="flex items-center gap-2">
+                  <category.icon className="h-4 w-4" />
+                  {category.name}
+                </div>
+              </SelectItem>
             ))}
-          </div>
-        ) : (
-          // Visualização por insight quando um grupo específico está selecionado
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredInsights.map(insight => (
-              <InsightCard
-                key={insight.type}
-                insight={insight}
-                groupId={selectedGroup}
-              />
-            ))}
-          </div>
-        )}
-
-        {filteredInsights.length === 0 && (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Filter className="h-16 w-16 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Nenhum insight encontrado</h3>
-              <p className="text-muted-foreground text-center max-w-md">
-                Não foram encontrados insights com os filtros selecionados. 
-                Tente ajustar os filtros ou busca.
-              </p>
-            </CardContent>
-          </Card>
-        )}
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Dialog de configuração de threshold */}
-      <Dialog open={thresholdDialogOpen} onOpenChange={setThresholdDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Configurar Insight</DialogTitle>
-            <DialogDescription>
-              Personalize os parâmetros deste insight para este grupo específico.
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedInsightForConfig && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Insight: {AVAILABLE_INSIGHTS.find(i => i.type === selectedInsightForConfig.type)?.name}</Label>
-                <Label>Grupo: {groups.find(g => g.id === selectedInsightForConfig.groupId)?.name}</Label>
-              </div>
-              
-              <Separator />
-              
-              <div className="space-y-4">
-                <h4 className="font-medium">Configurações de Threshold</h4>
+      {/* Main Content */}
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="overview" className="flex items-center gap-2">
+            <Eye className="h-4 w-4" />
+            Visão Geral
+          </TabsTrigger>
+          <TabsTrigger value="custom" className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4" />
+            Insights Customizados
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="flex items-center gap-2">
+            <Settings className="h-4 w-4" />
+            Configurações
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Visão Geral */}
+        <TabsContent value="overview" className="space-y-6">
+          {/* Insights Verificados */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-blue-600" />
+                  Insights Verificados
+                </h2>
                 <p className="text-sm text-muted-foreground">
-                  Configure os valores que determinam quando este insight será ativado.
+                  Insights profissionais com alta precisão
                 </p>
-                
-                {/* Aqui seria implementada a configuração específica de cada tipo de insight */}
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Valor mínimo</Label>
-                      <Input type="number" placeholder="Ex: 50" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Valor máximo</Label>
-                      <Input type="number" placeholder="Ex: 100" />
-                    </div>
-                  </div>
-                </div>
               </div>
-              
-              <Separator />
-              
-              <div className="space-y-4">
-                <h4 className="font-medium">Configurações de Notificação</h4>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label>Notificação in-app</Label>
-                    <Switch defaultChecked />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label>Notificação por email</Label>
-                    <Switch />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label>Notificação push</Label>
-                    <Switch />
-                  </div>
+              <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+                {filteredVerifiedInsights.length} disponíveis
+              </Badge>
+            </div>
+            
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredVerifiedInsights.map((insight) => (
+                <VerifiedInsightCard
+                  key={insight.id}
+                  insight={insight}
+                  onConfigure={handleConfigureVerifiedInsight}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Insights Customizados Recentes */}
+          {customInsights.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-purple-600" />
+                    Insights Customizados Recentes
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Seus insights personalizados mais recentes
+                  </p>
                 </div>
-              </div>
-              
-              <div className="flex gap-2 pt-4">
-                <Button className="flex-1">Salvar configurações</Button>
-                <Button variant="outline" onClick={() => setThresholdDialogOpen(false)}>
-                  Cancelar
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    const tab = document.querySelector('[value="custom"]') as HTMLElement;
+                    tab?.click();
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  Ver todos
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
+              </div>
+              
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {customInsights.slice(0, 6).map((insight) => (
+                  <CustomInsightCard
+                    key={insight.id}
+                    insight={insight}
+                    onEdit={handleEditInsight}
+                    onToggle={handleToggleCustomInsight}
+                    onDelete={handleDeleteInsight}
+                  />
+                ))}
               </div>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </TabsContent>
 
-      {/* Exibir DataAnalyzer quando solicitado */}
-      {showDataAnalyzer && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>📊 Análise de Dados</CardTitle>
-                <CardDescription>
-                  Explore todas as variáveis disponíveis e veja exemplos de como construir fórmulas
-                </CardDescription>
-              </div>
-              <Button 
-                variant="outline" 
-                onClick={() => setShowDataAnalyzer(false)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+        {/* Insights Customizados */}
+        <TabsContent value="custom" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-purple-600" />
+                Insights Customizados
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Crie e gerencie seus insights personalizados
+              </p>
             </div>
-          </CardHeader>
-          <CardContent>
-            <DataAnalyzer />
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Exibir Configurador de Insight Nativo quando solicitado */}
-      {configuringNativeInsight && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>⚙️ Configurar Insight Nativo</CardTitle>
-                <CardDescription>
-                  Ajuste os parâmetros para personalizar quando este insight deve ser ativado
-                </CardDescription>
-              </div>
-              <Button 
-                variant="outline" 
-                onClick={() => setConfiguringNativeInsight(null)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <NativeInsightConfigurator
-              insightType={configuringNativeInsight as any}
-              groupId={selectedGroup === 'all' ? '' : selectedGroup}
-              onSave={(config) => {
-                // Implementar salvamento das configurações
-                console.log('Salvando configuração:', config);
-                setConfiguringNativeInsight(null);
+            <Button 
+              onClick={() => {
+                setEditingInsight(null);
+                setShowCustomInsightForm(true);
               }}
-              onCancel={() => setConfiguringNativeInsight(null)}
-            />
-          </CardContent>
-        </Card>
-      )}
+              className="flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Criar Insight
+            </Button>
+          </div>
 
-      {/* Wizard para Criação de Insight Customizado */}
-      <InsightWizard
+          {customInsightsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="text-center">
+                <Brain className="h-8 w-8 animate-pulse mx-auto mb-2 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Carregando insights...</p>
+              </div>
+            </div>
+          ) : filteredCustomInsights.length > 0 ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredCustomInsights.map((insight) => (
+                <CustomInsightCard
+                  key={insight.id}
+                  insight={insight}
+                  onEdit={handleEditInsight}
+                  onToggle={handleToggleCustomInsight}
+                  onDelete={handleDeleteInsight}
+                />
+              ))}
+            </div>
+          ) : (
+            <Card className="border-2 border-dashed border-muted-foreground/25">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                  <Sparkles className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Nenhum insight customizado</h3>
+                <p className="text-muted-foreground text-center mb-4 max-w-md">
+                  Crie seu primeiro insight personalizado para monitorar métricas específicas dos seus grupos.
+                </p>
+                <Button 
+                  onClick={() => setShowCustomInsightForm(true)}
+                  className="flex items-center gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Criar Primeiro Insight
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Configurações */}
+        <TabsContent value="settings" className="space-y-6">
+          <div>
+            <h2 className="text-xl font-semibold flex items-center gap-2 mb-4">
+              <Settings className="h-5 w-5 text-gray-600" />
+              Configurações
+            </h2>
+            
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Configurações de Notificação */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Notificações</CardTitle>
+                  <CardDescription>
+                    Configure como receber alertas dos insights
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-medium">Notificações Email</Label>
+                      <p className="text-xs text-muted-foreground">Receber alertas por email</p>
+                    </div>
+                    <Switch defaultChecked />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-medium">Alertas Críticos</Label>
+                      <p className="text-xs text-muted-foreground">Notificações imediatas para insights críticos</p>
+                    </div>
+                    <Switch defaultChecked />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Configurações de Performance */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Performance</CardTitle>
+                  <CardDescription>
+                    Otimize o desempenho do sistema
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Frequência de Análise</Label>
+                    <Select defaultValue="daily">
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="hourly">A cada hora</SelectItem>
+                        <SelectItem value="daily">Diariamente</SelectItem>
+                        <SelectItem value="weekly">Semanalmente</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Período de Análise</Label>
+                    <Select defaultValue="30">
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="7">Últimos 7 dias</SelectItem>
+                        <SelectItem value="30">Últimos 30 dias</SelectItem>
+                        <SelectItem value="90">Últimos 90 dias</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* Modal para Criar/Editar Insight */}
+      <InsightWizardV2
         open={showCustomInsightForm}
-        onClose={() => setShowCustomInsightForm(false)}
-        onSave={async (formula) => {
-          console.log('Insight customizado criado:', formula);
-          const success = await saveCustomInsight(formula, selectedGroup === 'all' ? '' : selectedGroup);
-          if (success) {
-            toast({
-              title: 'Insight Criado!',
-              description: 'Seu insight customizado foi criado com sucesso.',
-            });
-          }
-          return success;
+        onClose={() => {
+          setShowCustomInsightForm(false);
+          setEditingInsight(null);
         }}
+        onSave={handleSaveCustomInsight}
+        editingInsight={editingInsight}
+        availableGroups={groups}
       />
 
-      {/* Seção de Insights Nativos */}
+      {/* Modal para Configurar Insight Verificado */}
+      <VerifiedInsightConfig
+        open={verifiedConfigOpen}
+        onClose={() => setVerifiedConfigOpen(false)}
+        insight={selectedVerifiedInsight}
+        onSave={handleSaveVerifiedConfig}
+      />
     </div>
   );
 } 

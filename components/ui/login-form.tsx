@@ -74,13 +74,19 @@ export function LoginForm() {
   }
 
   return (
-    <div className="w-full space-y-8">
-      <div className="space-y-2 text-center">
-        <h1 className="text-2xl font-medium">Entre na sua conta</h1>
+    <div className="space-y-6">
+      <div className="text-center space-y-1">
+        <h2 className="text-xl font-medium text-foreground">
+          Entre na sua conta
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Acesse sua dashboard de análises
+        </p>
       </div>
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-        <div className="space-y-3">
-          <Label htmlFor="email" className="text-sm font-normal text-muted-foreground">
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="email" className="text-sm font-medium text-foreground">
             Email
           </Label>
           <Input
@@ -89,21 +95,22 @@ export function LoginForm() {
             placeholder="seu@email.com"
             autoComplete="email"
             disabled={isPending}
-            className="h-11 rounded-xl bg-secondary/30 px-4 transition-all focus-visible:ring-1 focus-visible:ring-primary"
+            className="h-11 bg-background border-input focus:border-ring transition-colors"
             {...register("email")}
           />
           {errors.email && (
             <p className="text-xs text-destructive">{errors.email.message}</p>
           )}
         </div>
-        <div className="space-y-3">
+
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <Label htmlFor="password" className="text-sm font-normal text-muted-foreground">
+            <Label htmlFor="password" className="text-sm font-medium text-foreground">
               Senha
             </Label>
             <Link 
               href="/auth/forgot-password" 
-              className="text-xs text-primary hover:opacity-80 transition-opacity"
+              className="text-xs text-primary hover:text-primary/80 transition-colors"
             >
               Esqueceu a senha?
             </Link>
@@ -114,16 +121,17 @@ export function LoginForm() {
             placeholder="••••••••"
             autoComplete="current-password"
             disabled={isPending}
-            className="h-11 rounded-xl bg-secondary/30 px-4 transition-all focus-visible:ring-1 focus-visible:ring-primary"
+            className="h-11 bg-background border-input focus:border-ring transition-colors"
             {...register("password")}
           />
           {errors.password && (
             <p className="text-xs text-destructive">{errors.password.message}</p>
           )}
         </div>
+
         <Button 
           type="submit" 
-          className="w-full h-11 rounded-xl transition-all bg-primary hover:bg-primary/90"
+          className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-medium transition-colors"
           disabled={isPending}
         >
           {isPending ? (
@@ -136,74 +144,6 @@ export function LoginForm() {
           )}
         </Button>
       </form>
-      
-      {/* Botão de teste para desenvolvimento */}
-      <div className="mt-4 pt-4 border-t">
-        <Button 
-          type="button"
-          variant="outline"
-          className="w-full"
-          onClick={async () => {
-            // Login de teste para desenvolvimento
-            const testEmail = "test@example.com";
-            const testPassword = "123456";
-            
-            setIsPending(true);
-            try {
-              const { error } = await supabase.auth.signInWithPassword({
-                email: testEmail,
-                password: testPassword,
-              });
-
-              if (error) {
-                // Se o usuário não existir, criar conta de teste
-                const { error: signUpError } = await supabase.auth.signUp({
-                  email: testEmail,
-                  password: testPassword,
-                  options: {
-                    data: {
-                      full_name: 'Usuário Teste'
-                    }
-                  }
-                });
-                
-                if (signUpError) {
-                  toast({
-                    variant: "destructive",
-                    title: "Erro ao criar conta de teste",
-                    description: signUpError.message,
-                  });
-                  return;
-                }
-                
-                toast({
-                  title: "Conta de teste criada",
-                  description: "Faça login com test@example.com / 123456",
-                });
-                return;
-              }
-
-              router.push("/dashboard");
-              
-              toast({
-                title: "Login de teste realizado",
-                description: "Bem-vindo!",
-              });
-            } catch (error) {
-              toast({
-                variant: "destructive",
-                title: "Erro no login de teste",
-                description: "Ocorreu um erro inesperado.",
-              });
-            } finally {
-              setIsPending(false);
-            }
-          }}
-          disabled={isPending}
-        >
-          Login de Teste (Desenvolvimento)
-        </Button>
-      </div>
     </div>
   )
 } 

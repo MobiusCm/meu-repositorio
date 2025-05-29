@@ -48,7 +48,7 @@ import {
 } from 'lucide-react';
 import { useCustomInsights } from '@/hooks/use-custom-insights';
 import { useToast } from '@/components/ui/use-toast';
-import { InsightWizard } from '@/components/insight-wizard';
+import { InsightWizardV2 } from '@/components/insight-wizard-v2';
 import Link from 'next/link';
 
 // Mapa de ícones disponíveis
@@ -405,7 +405,10 @@ export default function CustomInsightsPage() {
                       <div>
                         <Label className="text-xs text-muted-foreground">Fórmula:</Label>
                         <code className="block p-2 bg-muted rounded text-xs font-mono mt-1 line-clamp-2">
-                          {insight.formula.expression}
+                          {typeof insight.formula === 'string' 
+                            ? insight.formula 
+                            : 'Fórmula inválida'
+                          }
                         </code>
                       </div>
                       
@@ -513,7 +516,7 @@ export default function CustomInsightsPage() {
       </div>
 
       {/* Wizard para criação/edição */}
-      <InsightWizard
+      <InsightWizardV2
         open={showWizard}
         onClose={handleCloseWizard}
         onSave={handleSaveInsight}

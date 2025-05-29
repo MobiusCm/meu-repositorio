@@ -26,7 +26,9 @@ import {
   AlertTriangle,
   CheckCircle,
   Info,
-  AlertCircle
+  AlertCircle,
+  Shield,
+  Brain
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -36,8 +38,33 @@ import { DateRange } from 'react-day-picker';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { useToast } from '@/components/ui/use-toast';
 import { fetchPreProcessedStats, DetailedStats } from '@/lib/analysis';
-import { generateSmartInsights, SmartInsight, GroupAnalysisData } from '@/lib/insights-engine';
-import { InsightDetails } from '@/components/insight-details';
+import { useVerifiedInsights } from '@/hooks/use-verified-insights';
+import { useCustomInsights } from '@/hooks/use-custom-insights';
+import { 
+  InsightRegistry, 
+  VerifiedInsightData 
+} from '@/components/insights/types/InsightRegistry';
+import { ParticipationDecline } from '@/components/insights/types/ParticipationDecline';
+import { ActivityPeak } from '@/components/insights/types/ActivityPeak';
+import { MemberConcentration } from '@/components/insights/types/MemberConcentration';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { GroupAnalysisData, DataProcessor } from '@/components/insights/utils/DataProcessor';
+
+// Tipo para insights do dashboard - verificados e customizados
+type DashboardInsight = {
+  id: string;
+  type: 'verified' | 'custom';
+  category: string;
+  title: string;
+  description: string;
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  groupId: string;
+  groupName: string;
+  trend: 'up' | 'down' | 'stable' | 'warning' | 'critical';
+  verified: boolean;
+  data?: VerifiedInsightData;
+  customData?: any; // Para insights customizados
+};
 
 interface DashboardStats {
   totalGroups: number;
@@ -45,7 +72,7 @@ interface DashboardStats {
   activeMembers: number;
   engagementRate: number;
   weeklyActivity: Array<{ date: string; messages: number; members: number }>;
-  smartInsights: SmartInsight[];
+  smartInsights: DashboardInsight[];
   topGroups: Array<{
     id: string;
     name: string;
@@ -93,8 +120,14 @@ export default function DashboardPage() {
   });
   const [periodOption, setPeriodOption] = useState<PeriodOption>('7dias');
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const [selectedInsight, setSelectedInsight] = useState<SmartInsight | null>(null);
-  const [insightModalOpen, setInsightModalOpen] = useState(false);
+  const [selectedVerifiedInsight, setSelectedVerifiedInsight] = useState<VerifiedInsightData | null>(null);
+  const [verifiedInsightModalOpen, setVerifiedInsightModalOpen] = useState(false);
+
+  // Hook para insights verificados
+  const { getActiveInsightsForGroup } = useVerifiedInsights();
+
+  // Hook para insights customizados
+  const { insights: customInsights, fetchInsights: fetchCustomInsights } = useCustomInsights();
 
   // Buscar dados do usuário
   useEffect(() => {
@@ -244,7 +277,7 @@ export default function DashboardPage() {
       
       // Buscar grupos
       const { data: groups } = await supabase
-    .from('groups')
+        .from('groups')
         .select('*');
       
       if (!groups || groups.length === 0) {
@@ -264,7 +297,6 @@ export default function DashboardPage() {
       // Determinar período para análise
       const startDate = dateRange?.from || subDays(new Date(), 6);
       const endDate = dateRange?.to || new Date();
-      const daysPeriod = getDaysBetween(startDate, endDate);
 
       // Buscar dados agregados de todos os grupos
       const groupAnalytics: DetailedStats[] = [];
@@ -274,7 +306,7 @@ export default function DashboardPage() {
       const allDailyStats: Array<{ date: string; total_messages: number; active_members: number }> = [];
       
       // Para insights, sempre usar os últimos 30 dias
-      const insightsStartDate = subDays(new Date(), 29); // 30 dias: hoje + 29 dias anteriores
+      const insightsStartDate = subDays(new Date(), 29);
       const insightsEndDate = new Date();
       
       for (const group of groups) {
@@ -290,28 +322,18 @@ export default function DashboardPage() {
           totalActiveMembers += groupStats.active_members;
           
           // Preparar dados para o sistema de insights (sempre últimos 30 dias)
-          groupsAnalysisData.push({
-            groupId: group.id,
-            groupName: group.name,
-            dailyStats: insightsStats.daily_stats.map(day => ({
-              date: day.date,
-              total_messages: day.total_messages,
-              active_members: day.active_members,
-              hourly_activity: day.hourly_activity
-            })),
-            memberStats: insightsStats.member_stats.map(member => ({
-              name: member.name,
-              message_count: member.message_count,
-              word_count: member.word_count,
-              media_count: member.media_count,
-              dailyStats: member.dailyStats
-            })),
-            period: {
+          const groupAnalysisData = DataProcessor.convertToGroupAnalysisData(
+            group.id,
+            group.name,
+            insightsStats,
+            {
               start: insightsStartDate,
               end: insightsEndDate,
               days: 30
             }
-          });
+          );
+          
+          groupsAnalysisData.push(groupAnalysisData);
           
           // Agregar dados diários (do período selecionado para gráficos)
           groupStats.daily_stats.forEach(day => {
@@ -332,8 +354,58 @@ export default function DashboardPage() {
         }
       }
 
-      // Gerar insights inteligentes usando o novo sistema
-      const smartInsights = generateSmartInsights(groupsAnalysisData);
+      // Gerar insights verificados para cada grupo
+      const verifiedInsightsData: VerifiedInsightData[] = [];
+      
+      for (const groupAnalysisData of groupsAnalysisData) {
+        const activeVerifiedInsights = getActiveInsightsForGroup(groupAnalysisData);
+        verifiedInsightsData.push(...activeVerifiedInsights);
+      }
+
+      // Converter insights verificados para o formato do dashboard
+      const verifiedDashboardInsights: DashboardInsight[] = verifiedInsightsData.map(vi => ({
+        id: vi.insight.id + '_' + vi.insight.groupId,
+        type: 'verified' as const,
+        category: vi.insight.category,
+        title: vi.insight.title,
+        description: vi.insight.description,
+        priority: vi.insight.priority,
+        groupId: vi.insight.groupId,
+        groupName: vi.insight.groupName,
+        trend: vi.trend,
+        verified: true,
+        data: vi
+      }));
+
+      // Buscar insights customizados ativos
+      await fetchCustomInsights();
+      const activeCustomInsights = customInsights
+        .filter(insight => insight.enabled)
+        .slice(0, 5); // Limitando para performance
+
+      // Converter insights customizados para o formato do dashboard
+      const customDashboardInsights: DashboardInsight[] = activeCustomInsights.map(ci => ({
+        id: 'custom_' + ci.id,
+        type: 'custom' as const,
+        category: ci.category,
+        title: ci.name,
+        description: ci.description,
+        priority: ci.priority,
+        groupId: 'all', // Insights customizados podem ser para todos os grupos
+        groupName: 'Todos os grupos',
+        trend: 'stable' as const, // Por enquanto, pode ser melhorado
+        verified: false,
+        customData: ci
+      }));
+
+      // Combinar todos os insights e pegar os 3 principais por prioridade
+      const allInsights = [...verifiedDashboardInsights, ...customDashboardInsights];
+      
+      // Ordenar por prioridade e pegar os 3 principais
+      const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+      const topInsights = allInsights
+        .sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority])
+        .slice(0, 3);
 
       // Ordenar dados diários por data
       allDailyStats.sort((a, b) => {
@@ -397,7 +469,7 @@ export default function DashboardPage() {
         activeMembers: totalActiveMembers,
         engagementRate,
         weeklyActivity,
-        smartInsights,
+        smartInsights: topInsights,
         topGroups,
         recentActivity
       });
@@ -437,7 +509,7 @@ export default function DashboardPage() {
     }
   };
 
-  const getInsightIcon = (insight: SmartInsight) => {
+  const getInsightIcon = (insight: DashboardInsight) => {
     // Determinar cor baseada na tendência e criticidade
     const getIconColor = () => {
       switch (insight.trend) {
@@ -458,39 +530,69 @@ export default function DashboardPage() {
     
     const iconColor = getIconColor();
     
-    // Escolher ícone baseado no tipo e criticidade
-    switch (insight.type) {
-      case 'participation_excellence':
-        return <CheckCircle className={`h-6 w-6 ${iconColor}`} />;
+    // Para insights verificados, usar ícones específicos com badge de verificação
+    switch (insight.type === 'verified' && insight.data ? insight.data.insight.id : 'custom') {
       case 'participation_decline':
-      case 'engagement_pattern':
-        if (insight.trend === 'down' || insight.trend === 'critical') {
-          return <TrendingDown className={`h-6 w-6 ${iconColor}`} />;
-        }
-        return <TrendingUp className={`h-6 w-6 ${iconColor}`} />;
-      case 'growth_trend':
-        if (insight.trend === 'down' || insight.trend === 'critical') {
-          return <TrendingDown className={`h-6 w-6 ${iconColor}`} />;
-        } else if (insight.trend === 'up') {
-          return <TrendingUp className={`h-6 w-6 ${iconColor}`} />;
-        }
-        return <Activity className={`h-6 w-6 ${iconColor}`} />;
+        return (
+          <div className="relative">
+            <TrendingDown className={`h-6 w-6 ${iconColor}`} />
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-600 rounded-full flex items-center justify-center">
+              <CheckCircle className="h-2 w-2 text-white" />
+            </div>
+          </div>
+        );
       case 'activity_peak':
-        return <Zap className={`h-6 w-6 ${iconColor}`} />;
-      case 'anomaly_detection':
-        return <AlertTriangle className={`h-6 w-6 ${iconColor}`} />;
+        return (
+          <div className="relative">
+            <Zap className={`h-6 w-6 ${iconColor}`} />
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-600 rounded-full flex items-center justify-center">
+              <CheckCircle className="h-2 w-2 text-white" />
+            </div>
+          </div>
+        );
       case 'member_concentration':
-      case 'leadership_emergence':
-        return <Users className={`h-6 w-6 ${iconColor}`} />;
-      case 'time_pattern':
-        return <Clock className={`h-6 w-6 ${iconColor}`} />;
-      case 'content_quality':
-        return <MessageSquare className={`h-6 w-6 ${iconColor}`} />;
-      default: 
-        return <Activity className={`h-6 w-6 ${iconColor}`} />;
+        return (
+          <div className="relative">
+            <Users className={`h-6 w-6 ${iconColor}`} />
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-600 rounded-full flex items-center justify-center">
+              <CheckCircle className="h-2 w-2 text-white" />
+            </div>
+          </div>
+        );
+      case 'growth_acceleration':
+        return (
+          <div className="relative">
+            <TrendingUp className={`h-6 w-6 ${iconColor}`} />
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-600 rounded-full flex items-center justify-center">
+              <CheckCircle className="h-2 w-2 text-white" />
+            </div>
+          </div>
+        );
+      case 'custom':
+      default:
+        return (
+          <div className="relative">
+            <Brain className={`h-6 w-6 ${iconColor}`} />
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-purple-600 rounded-full flex items-center justify-center">
+              <Sparkles className="h-2 w-2 text-white" />
+            </div>
+          </div>
+        );
     }
   };
   
+  // Handler para insights verificados
+  const handleInsightClick = (insight: DashboardInsight) => {
+    if (insight.type === 'verified' && insight.data) {
+      setSelectedVerifiedInsight(insight.data);
+      setVerifiedInsightModalOpen(true);
+    } else if (insight.type === 'custom') {
+      // Para insights customizados, você pode implementar um modal diferente
+      // ou redirecionar para a página de administração
+      router.push('/admin/insights');
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Banner Premium de Boas-vindas */}
@@ -809,10 +911,7 @@ export default function DashboardPage() {
                   <div 
                     key={insight.id} 
                     className="flex items-start gap-4 p-4 rounded-lg border border-border/40 hover:border-border/70 hover:bg-muted/40 dark:hover:bg-muted/30 transition-all duration-200 group cursor-pointer"
-                    onClick={() => {
-                      setSelectedInsight(insight);
-                      setInsightModalOpen(true);
-                    }}
+                    onClick={() => handleInsightClick(insight)}
                     title="Clique para ver detalhes completos"
                   >
                     {/* Ícone */}
@@ -998,12 +1097,71 @@ export default function DashboardPage() {
         </TabsContent>
       </Tabs>
       
-      {/* Modal de Detalhes do Insight */}
-      <InsightDetails
-        insight={selectedInsight}
-        isOpen={insightModalOpen}
-        onClose={() => setInsightModalOpen(false)}
-      />
+      {/* Modal para Insights Verificados */}
+      {selectedVerifiedInsight && (
+        <Dialog open={verifiedInsightModalOpen} onOpenChange={setVerifiedInsightModalOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-blue-600" />
+                Insight Verificado
+              </DialogTitle>
+            </DialogHeader>
+            
+            {/* Renderizar componente específico baseado no tipo */}
+            {selectedVerifiedInsight.insight.id === 'participation_decline' && (
+              <ParticipationDecline 
+                insight={{
+                  id: selectedVerifiedInsight.insight.id,
+                  title: selectedVerifiedInsight.insight.title,
+                  priority: selectedVerifiedInsight.insight.priority,
+                  groupId: selectedVerifiedInsight.insight.groupId,
+                  groupName: selectedVerifiedInsight.insight.groupName,
+                  metadata: {
+                    period: `${selectedVerifiedInsight.groupData.period.days} dias`
+                  },
+                  trend: selectedVerifiedInsight.trend as 'down' | 'critical',
+                  groupData: selectedVerifiedInsight.groupData
+                }}
+              />
+            )}
+            
+            {selectedVerifiedInsight.insight.id === 'activity_peak' && (
+              <ActivityPeak 
+                insight={{
+                  id: selectedVerifiedInsight.insight.id,
+                  title: selectedVerifiedInsight.insight.title,
+                  priority: selectedVerifiedInsight.insight.priority,
+                  groupId: selectedVerifiedInsight.insight.groupId,
+                  groupName: selectedVerifiedInsight.insight.groupName,
+                  metadata: {
+                    period: `${selectedVerifiedInsight.groupData.period.days} dias`
+                  },
+                  trend: selectedVerifiedInsight.trend as 'up' | 'warning',
+                  groupData: selectedVerifiedInsight.groupData
+                }}
+              />
+            )}
+            
+            {selectedVerifiedInsight.insight.id === 'member_concentration' && (
+              <MemberConcentration 
+                insight={{
+                  id: selectedVerifiedInsight.insight.id,
+                  title: selectedVerifiedInsight.insight.title,
+                  priority: selectedVerifiedInsight.insight.priority,
+                  groupId: selectedVerifiedInsight.insight.groupId,
+                  groupName: selectedVerifiedInsight.insight.groupName,
+                  metadata: {
+                    period: `${selectedVerifiedInsight.groupData.period.days} dias`
+                  },
+                  trend: selectedVerifiedInsight.trend as 'warning' | 'stable',
+                  groupData: selectedVerifiedInsight.groupData
+                }}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 } 

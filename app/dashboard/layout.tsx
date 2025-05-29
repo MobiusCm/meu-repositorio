@@ -17,6 +17,7 @@ import {
   Sun,
   Moon,
   Brain,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -32,6 +33,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { LanguageSelector } from "@/components/language-selector";
 import { Language, getTranslation } from "@/lib/translations";
+import { OmnysLogo } from "@/components/ui/omnys-logo"
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -124,11 +126,12 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   // Links da navegação
   const navItems = [
     { href: "/dashboard", icon: Home, title: t('navigation.dashboard') },
-    { href: "/dashboard/reports", icon: BarChart, title: t('navigation.reports') },
-    { href: "/dashboard/groups", icon: Users, title: t('navigation.groups') },
-    { href: "/dashboard/members", icon: MessageSquare, title: t('navigation.members') },
+    { href: "/reports", icon: BarChart, title: t('navigation.reports') },
+    { href: "/groups", icon: Users, title: t('navigation.groupAnalytics') },
+    { href: "/members", icon: MessageSquare, title: t('navigation.memberInsights') },
     { href: "/admin/insights", icon: Brain, title: "Painel Insights" },
-    { href: "/dashboard/settings", icon: Settings, title: t('navigation.settings') },
+    { href: "/docs/smart-insights", icon: BookOpen, title: "Documentação Insights" },
+    { href: "/settings", icon: Settings, title: t('navigation.settings') },
   ];
 
   return (
@@ -147,8 +150,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
               href="/dashboard" 
               className="flex items-center space-x-2 font-medium text-lg"
             >
-              <BarChart className="h-5 w-5 text-primary" />
-              <span>WADash</span>
+              <OmnysLogo size="md" />
             </Link>
             {isMobile && (
               <Button

@@ -29,7 +29,7 @@ export interface CustomInsight {
 export interface CreateCustomInsightData {
   name: string;
   description: string;
-  formula: {
+  formula: string | {
     expression: string;
     type: string;
   };
@@ -75,7 +75,7 @@ export interface UseCustomInsightsReturn {
   };
 
   // Função de salvamento
-  saveCustomInsight: (formula: any, groupId: string) => Promise<boolean>;
+  saveCustomInsight: (data: CreateCustomInsightData) => Promise<boolean>;
 }
 
 export function useCustomInsights(): UseCustomInsightsReturn {
@@ -384,37 +384,66 @@ export function useCustomInsights(): UseCustomInsightsReturn {
   };
 
   // Salvar insight customizado
-  const saveCustomInsight = async (formula: any, groupId: string): Promise<boolean> => {
+  const saveCustomInsight = async (data: CreateCustomInsightData): Promise<boolean> => {
     try {
-      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
 
-      const { error } = await supabase
+      // Normalizar formula - sempre salvar como string simples
+      const formulaString = typeof data.formula === 'string' 
+        ? data.formula 
+        : data.formula.expression;
+
+      console.log('💾 Salvando insight com dados:', {
+        name: data.name,
+        formula: formulaString,
+        user_id: user.id
+      });
+
+      const { data: newInsight, error: createError } = await supabase
         .from('custom_insights')
         .insert({
-          name: formula.name,
-          description: formula.description,
-          formula_expression: formula.expression,
-          formula_variables: formula.variables,
-          conditions: formula.conditions,
-          category: formula.category,
-          priority: formula.priority,
-          group_id: groupId,
-          user_id: (await supabase.auth.getUser()).data.user?.id,
-          enabled: true,
-          created_at: new Date().toISOString()
-        });
+          user_id: user.id,
+          name: data.name,
+          description: data.description,
+          formula: formulaString, // String simples
+          variables: data.variables,
+          conditions: data.conditions,
+          priority: data.priority,
+          category: data.category,
+          enabled: true
+        })
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (createError) {
+        console.error('❌ Erro ao salvar no banco:', createError);
+        throw createError;
+      }
 
-      // Recarregar insights
-      await fetchInsights();
+      console.log('✅ Insight salvo com sucesso:', newInsight);
+
+      // Atualizar estado local
+      setInsights(prev => [newInsight, ...prev]);
+
+      toast({
+        title: 'Insight criado',
+        description: `"${data.name}" foi criado com sucesso.`,
+      });
 
       return true;
-    } catch (error) {
-      console.error('Erro ao salvar insight customizado:', error);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao salvar insight';
+      setError(errorMessage);
+      console.error('🚨 Erro completo:', err);
+      toast({
+        title: 'Erro',
+        description: errorMessage,
+        variant: 'destructive',
+      });
       return false;
-    } finally {
-      setLoading(false);
     }
   };
 

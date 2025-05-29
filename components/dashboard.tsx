@@ -63,6 +63,7 @@ import { MemberDetails } from "@/components/member-details"
 import { TierBadge } from "@/components/tier-badge"
 import { useToast } from "@/components/ui/use-toast"
 import { LogoutButton } from "@/components/ui/logout-button"
+import { OmnysLogo } from "@/components/ui/omnys-logo"
 
 import {
   Area,
@@ -1075,7 +1076,7 @@ export default function Dashboard() {
           </div>
         )}
         <div className="p-6 border-b">
-          <h1 className="text-2xl font-semibold text-primary">001Dash</h1>
+          <OmnysLogo size="lg" />
           <p className="text-sm text-muted-foreground">WhatsApp Insights</p>
         </div>
         <div className="flex-1 py-4 overflow-y-auto">
