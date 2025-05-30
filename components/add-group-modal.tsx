@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { X, Upload, ArrowRight, Check, Loader2, Camera } from 'lucide-react';
+import { X, Upload, ArrowRight, Check, Loader2, Camera, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -29,10 +29,51 @@ import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
 import { analyzeWhatsAppChat } from '@/lib/analysis';
 import Image from 'next/image';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+
+// Tipos de plataforma
+type Platform = 'whatsapp' | 'discord' | 'telegram' | 'instagram';
+
+// Configuração das plataformas
+const PLATFORMS = [
+  {
+    id: 'whatsapp' as Platform,
+    name: 'WhatsApp',
+    icon: MessageSquare,
+    color: 'bg-green-500',
+    available: true,
+    description: 'Análise de grupos do WhatsApp'
+  },
+  {
+    id: 'discord' as Platform,
+    name: 'Discord',
+    icon: MessageSquare,
+    color: 'bg-indigo-500',
+    available: false,
+    description: 'Análise de servidores Discord'
+  },
+  {
+    id: 'telegram' as Platform,
+    name: 'Telegram',
+    icon: MessageSquare,
+    color: 'bg-blue-500',
+    available: false,
+    description: 'Análise de grupos Telegram'
+  },
+  {
+    id: 'instagram' as Platform,
+    name: 'Instagram',
+    icon: MessageSquare,
+    color: 'bg-pink-500',
+    available: false,
+    description: 'Análise de comentários Instagram'
+  }
+];
 
 // Esquema de validação do formulário
 const formSchema = z.object({
-  name: z.string().min(3, 'O nome do grupo deve ter pelo menos 3 caracteres'),
+  name: z.string().min(3, 'O nome da comunidade deve ter pelo menos 3 caracteres'),
   description: z.string().optional(),
   memberCount: z.number().min(0, 'O número de membros deve ser positivo').optional(),
   icon: z.instanceof(File).optional(),
@@ -42,6 +83,7 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
   const router = useRouter();
   // Estado para controlar as etapas
   const [currentStep, setCurrentStep] = useState(0);
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [iconFile, setIconFile] = useState<File | null>(null);
   const [iconPreview, setIconPreview] = useState<string | null>(null);
@@ -53,6 +95,7 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
   const [messagesByDay, setMessagesByDay] = useState<Record<string, string[]>>({});
   const { toast } = useToast();
   const iconInputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Configuração do formulário
   const form = useForm<z.infer<typeof formSchema>>({
@@ -66,7 +109,7 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
 
   // Progresso para próxima etapa
   const nextStep = () => {
-    if (currentStep < 1) {
+    if (currentStep < 2) {
       setCurrentStep(currentStep + 1);
     }
   };
@@ -76,6 +119,23 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
     }
+  };
+
+  // Reset do modal
+  const resetModal = () => {
+    setCurrentStep(0);
+    setSelectedPlatform(null);
+    setFile(null);
+    setIconFile(null);
+    setIconPreview(null);
+    setIsUploading(false);
+    setIsProcessing(false);
+    setUploadProgress(0);
+    setProcessingProgress(0);
+    setGroupId(null);
+    setMessagesByDay({});
+    setError(null);
+    form.reset();
   };
 
   // Função para lidar com o upload do ícone
@@ -94,11 +154,11 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
       return;
     }
 
-    // Validar tamanho (máximo 5MB)
-    if (file.size > 5 * 1024 * 1024) {
+    // Validar tamanho (máximo 2MB)
+    if (file.size > 2 * 1024 * 1024) {
       toast({
         title: "Arquivo muito grande",
-        description: "A imagem deve ter no máximo 5MB",
+        description: "A imagem deve ter no máximo 2MB",
         variant: "destructive",
       });
       return;
@@ -132,30 +192,57 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
     }
   };
 
-  // Enviar etapa 1 - Criação do grupo
-  const onSubmitStep1 = async (values: z.infer<typeof formSchema>) => {
+  // Enviar etapa 1 - Seleção de plataforma
+  const onSubmitPlatform = () => {
+    if (!selectedPlatform) {
+      toast({
+        title: "Selecione uma plataforma",
+        description: "Escolha a plataforma da sua comunidade",
+        variant: "destructive",
+      });
+      return;
+    }
+    nextStep();
+  };
+
+  // Enviar etapa 2 - Criação da comunidade
+  const onSubmitStep2 = async (values: z.infer<typeof formSchema>) => {
     try {
       setIsUploading(true);
       const supabase = createClient();
       
-      // 1. Criar novo grupo no Supabase
-      const { data: group, error } = await supabase
+      // Verificar autenticação
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // SEGURANÇA: Incluir user_id e platform na criação da comunidade
+      const { data, error } = await supabase
         .from('groups')
-        .insert({
-          name: values.name,
-          description: values.description || null,
-          member_count: values.memberCount || null,
-        })
+        .insert([
+          {
+            name: values.name,
+            description: values.description || null,
+            member_count: values.memberCount || null,
+            user_id: user.id, // IMPORTANTE: Associar comunidade ao usuário
+            platform: selectedPlatform, // IMPORTANTE: Salvar plataforma selecionada
+          },
+        ])
         .select()
         .single();
 
-      if (error) throw error;
-      setGroupId(group.id);
+      if (error) {
+        throw error;
+      }
+
+      setGroupId(data.id);
 
       // 2. Se tiver ícone, fazer upload para o Storage
       if (values.icon) {
         const fileExt = values.icon.name.split('.').pop();
-        const fileName = `${group.id}-${Date.now()}.${fileExt}`;
+        const fileName = `${data.id}-${Date.now()}.${fileExt}`;
         const filePath = `groups/${fileName}`;
         
         // Simular progresso de upload
@@ -191,27 +278,43 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
           .from('group-icons')
           .getPublicUrl(filePath);
 
-        // Atualizar o grupo com o URL do ícone
+        // Atualizar a comunidade com o URL do ícone
         await supabase
           .from('groups')
           .update({ icon_url: urlData.publicUrl })
-          .eq('id', group.id);
+          .eq('id', data.id);
       }
 
       setIsUploading(false);
-      nextStep();
+      
+      // Se for WhatsApp, ir para etapa de upload, senão finalizar
+      if (selectedPlatform === 'whatsapp') {
+        nextStep();
+      } else {
+        // Para outras plataformas, finalizar aqui
+        toast({
+          title: 'Comunidade criada!',
+          description: 'Sua comunidade foi criada com sucesso.',
+        });
+        setTimeout(() => {
+          router.push(`/groups/${data.id}`);
+          router.refresh();
+          onClose();
+          resetModal();
+        }, 1000);
+      }
     } catch (error) {
-      console.error('Erro ao criar grupo:', error);
+      console.error('Erro ao criar comunidade:', error);
       toast({
-        title: 'Erro ao criar grupo',
-        description: 'Ocorreu um erro ao criar o grupo. Tente novamente.',
+        title: 'Erro ao criar comunidade',
+        description: 'Ocorreu um erro ao criar a comunidade. Tente novamente.',
         variant: 'destructive',
       });
       setIsUploading(false);
     }
   };
 
-  // Processar o arquivo de chat do WhatsApp
+  // Processar o arquivo de chat do WhatsApp (mantém a lógica original)
   const processWhatsAppChat = async () => {
     if (!file || !groupId) return;
 
@@ -234,11 +337,6 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
       
       let processedCount = 0;
       const totalMessages = messages.length;
-      
-      // Atualizar progresso para refletir que temos 3 etapas:
-      // 1. Processamento inicial (20%)
-      // 2. Upload dos arquivos (30%)
-      // 3. Análise dos dados (50%)
       
       toast({
         title: 'Processando arquivo',
@@ -454,26 +552,27 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
         
         toast({
           title: 'Análise concluída',
-          description: 'Análise dos dados concluída com sucesso! Redirecionando para detalhes do grupo...',
+          description: 'Análise dos dados concluída com sucesso! Redirecionando para detalhes da comunidade...',
         });
       } catch (error) {
         console.error('Erro ao executar análise inicial:', error);
         toast({
           title: 'Aviso',
-          description: 'Arquivos de chat foram carregados, mas houve um erro na análise. Os dados serão analisados quando você acessar os detalhes do grupo.',
+          description: 'Arquivos de chat foram carregados, mas houve um erro na análise. Os dados serão analisados quando você acessar os detalhes da comunidade.',
           variant: 'destructive',
         });
         
         // Mesmo com erro, definir como 100% e continuar
-      setProcessingProgress(100);
+        setProcessingProgress(100);
       }
       
-      // Após 1 segundo, redirecionar para a página do grupo
+      // Após 1 segundo, redirecionar para a página da comunidade
       setTimeout(() => {
         setIsProcessing(false);
         router.push(`/groups/${groupId}`);
         router.refresh();
         onClose();
+        resetModal();
       }, 1000);
       
     } catch (error) {
@@ -487,31 +586,104 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
     }
   };
 
-  // Renderizar etapa 1 - Informações básicas do grupo
-  const renderStep1 = () => (
+  // Renderizar etapa 0 - Seleção de plataforma
+  const renderPlatformSelection = () => (
     <div className="space-y-6">
-      <div className="text-center">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
-          <Upload className="h-6 w-6 text-primary-foreground" />
-        </div>
-        <h3 className="text-lg font-semibold">Criar Novo Grupo</h3>
+      <div className="text-center space-y-2">
+        <h3 className="text-lg font-semibold">Escolha a Plataforma</h3>
         <p className="text-sm text-muted-foreground">
-          Informe os dados básicos do grupo de WhatsApp
+          Selecione a plataforma da sua comunidade
+        </p>
+      </div>
+      
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {PLATFORMS.map((platform) => {
+          const Icon = platform.icon;
+          return (
+            <button
+              key={platform.id}
+              onClick={() => platform.available && setSelectedPlatform(platform.id)}
+              className={cn(
+                "relative p-4 border-2 rounded-lg transition-all duration-200 text-left",
+                platform.available 
+                  ? "hover:border-primary cursor-pointer" 
+                  : "opacity-60 cursor-not-allowed",
+                selectedPlatform === platform.id 
+                  ? "border-primary bg-primary/5" 
+                  : "border-border"
+              )}
+              disabled={!platform.available}
+            >
+              <div className="flex items-start space-x-3">
+                <div className={cn(
+                  "p-2 rounded-lg",
+                  platform.color,
+                  platform.available ? "text-white" : "text-gray-400"
+                )}>
+                  <Icon className="h-5 w-5" />
+                </div>
+                
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center space-x-2">
+                    <h4 className="font-medium">{platform.name}</h4>
+                    {!platform.available && (
+                      <Badge variant="secondary" className="text-xs">
+                        Em Breve
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {platform.description}
+                  </p>
+                </div>
+                
+                {selectedPlatform === platform.id && (
+                  <div className="text-primary">
+                    <Check className="h-5 w-5" />
+                  </div>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      
+      <div className="flex justify-end pt-4">
+        <Button 
+          onClick={onSubmitPlatform}
+          disabled={!selectedPlatform}
+          className="min-w-[120px]"
+        >
+          Próximo
+          <ArrowRight className="ml-2 h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+
+  // Renderizar etapa 1 - Informações básicas da comunidade
+  const renderCommunityForm = () => (
+    <div className="space-y-6">
+      <div className="text-center space-y-2">
+        <h3 className="text-lg font-semibold">Informações da Comunidade</h3>
+        <p className="text-sm text-muted-foreground">
+          Adicione os dados básicos da sua comunidade
         </p>
       </div>
       
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmitStep1)} className="space-y-4">
-          {/* Upload de Foto */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium">Foto do Grupo</label>
-            <div className="flex items-center space-x-4">
+        <form onSubmit={form.handleSubmit(onSubmitStep2)} className="space-y-4">
+          {/* Upload de Foto e Nome em uma linha */}
+          <div className="flex items-start space-x-4">
+            {/* Upload de Foto */}
+            <div className="flex-shrink-0">
+              <label className="block text-sm font-medium mb-3">Foto da Comunidade</label>
               <div className="relative">
                 {iconPreview ? (
-                  <div className="relative h-20 w-20 rounded-full overflow-hidden ring-2 ring-background">
+                  <div className="relative h-20 w-20 rounded-lg overflow-hidden ring-2 ring-background border">
                     <Image
                       src={iconPreview}
-                      alt="Preview da foto do grupo"
+                      alt="Preview da foto da comunidade"
                       fill
                       className="object-cover"
                     />
@@ -524,24 +696,29 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                     </button>
                   </div>
                 ) : (
-                  <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center ring-2 ring-background">
+                  <button
+                    type="button"
+                    onClick={() => iconInputRef.current?.click()}
+                    className="h-20 w-20 rounded-lg bg-muted flex items-center justify-center ring-2 ring-background border hover:bg-muted/80 transition-colors"
+                  >
                     <Camera className="h-8 w-8 text-muted-foreground" />
-                  </div>
+                  </button>
                 )}
               </div>
               
-              <div className="flex-1 space-y-2">
+              <div className="mt-2 space-y-1">
                 <Button
                   variant="outline"
                   type="button"
                   onClick={() => iconInputRef.current?.click()}
-                  className="w-full"
+                  className="w-20 text-xs py-1 h-7"
+                  size="sm"
                 >
-                  <Upload className="mr-2 h-4 w-4" />
-                  Selecionar Foto
+                  <Upload className="mr-1 h-3 w-3" />
+                  {iconPreview ? 'Alterar' : 'Adicionar'}
                 </Button>
-                <p className="text-xs text-muted-foreground">
-                  JPG, PNG, GIF ou WebP. Máximo 5MB.
+                <p className="text-xs text-muted-foreground text-center">
+                  Máx. 2MB
                 </p>
               </div>
             </div>
@@ -553,21 +730,24 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
               onChange={handleIconUpload}
               className="hidden"
             />
-          </div>
 
-          <FormField
-            control={form.control}
-            name="name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Nome do Grupo *</FormLabel>
-                <FormControl>
-                  <Input placeholder="Ex: Família Silva" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            {/* Nome da Comunidade */}
+            <div className="flex-1">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome da Comunidade *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ex: Comunidade Gaming Brasil" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
 
           <FormField
             control={form.control}
@@ -577,7 +757,7 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                 <FormLabel>Descrição</FormLabel>
                 <FormControl>
                   <Textarea 
-                    placeholder="Descrição opcional do grupo" 
+                    placeholder="Descrição opcional da comunidade" 
                     rows={3}
                     {...field} 
                   />
@@ -597,7 +777,7 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                   <Input 
                     type="number" 
                     min="0" 
-                    placeholder="Ex: 25"
+                    placeholder="Ex: 150"
                     value={field.value || ''}
                     onChange={(e) => field.onChange(Number(e.target.value))}
                   />
@@ -607,7 +787,10 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
             )}
           />
           
-          <div className="flex justify-end pt-4">
+          <div className="flex justify-between pt-4">
+            <Button variant="outline" onClick={prevStep}>
+              Voltar
+            </Button>
             <Button 
               type="submit" 
               disabled={isUploading}
@@ -620,7 +803,7 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                 </>
               ) : (
                 <>
-                  Próximo
+                  {selectedPlatform === 'whatsapp' ? 'Próximo' : 'Criar Comunidade'}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </>
               )}
@@ -631,113 +814,130 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
     </div>
   );
 
+  // Renderizar etapa 2 - Upload de mensagens (apenas para WhatsApp)
+  const renderMessageUpload = () => (
+    <div className="space-y-6">
+      <div className="text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
+          <Upload className="h-6 w-6 text-primary-foreground" />
+        </div>
+        <h3 className="text-lg font-semibold">Upload de Mensagens</h3>
+        <p className="text-sm text-muted-foreground">
+          Faça upload do arquivo de chat exportado do WhatsApp
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+          <input
+            type="file"
+            accept=".txt"
+            onChange={handleFileUpload}
+            className="hidden"
+            id="chat-file"
+          />
+          <label htmlFor="chat-file" className="cursor-pointer">
+            <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+            <p className="text-sm font-medium">
+              {file ? file.name : 'Clique para selecionar o arquivo de chat'}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Arquivo .txt exportado do WhatsApp
+            </p>
+          </label>
+        </div>
+
+        {file && (
+          <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+            <div className="flex items-center space-x-3">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span className="text-sm font-medium">{file.name}</span>
+              <span className="text-xs text-muted-foreground">
+                ({(file.size / 1024 / 1024).toFixed(2)} MB)
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setFile(null)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
+        <div className="flex justify-between pt-4">
+          <Button variant="outline" onClick={prevStep}>
+            Voltar
+          </Button>
+          <Button
+            onClick={processWhatsAppChat}
+            disabled={!file || isProcessing}
+            className="min-w-[120px]"
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {processingProgress}%
+              </>
+            ) : (
+              <>
+                Processar
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </>
+            )}
+          </Button>
+        </div>
+
+        {isProcessing && (
+          <div className="space-y-2">
+            <Progress value={processingProgress} className="h-2" />
+            <p className="text-xs text-muted-foreground text-center">
+              {processingProgress < 20 && 'Analisando mensagens...'}
+              {processingProgress >= 20 && processingProgress < 50 && 'Fazendo upload dos arquivos...'}
+              {processingProgress >= 50 && 'Executando análise dos dados...'}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const getStepTitle = () => {
+    switch (currentStep) {
+      case 0: return 'Selecionar Plataforma';
+      case 1: return 'Nova Comunidade';
+      case 2: return 'Upload de Mensagens';
+      default: return 'Nova Comunidade';
+    }
+  };
+
+  const getStepDescription = () => {
+    switch (currentStep) {
+      case 0: return 'Escolha a plataforma da sua comunidade';
+      case 1: return 'Insira as informações básicas da comunidade';
+      case 2: return 'Faça upload do arquivo de chat exportado';
+      default: return 'Crie uma nova comunidade';
+    }
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      if (!open) {
+        onClose();
+        resetModal();
+      }
+    }}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>
-            {currentStep === 0 ? 'Novo Grupo' : 'Upload de Mensagens'}
-          </DialogTitle>
-          <DialogDescription>
-            {currentStep === 0 
-              ? 'Insira as informações básicas do grupo'
-              : 'Faça upload do arquivo de chat exportado do WhatsApp'
-            }
-          </DialogDescription>
+          <DialogTitle>{getStepTitle()}</DialogTitle>
+          <DialogDescription>{getStepDescription()}</DialogDescription>
         </DialogHeader>
 
         <div className="py-4">
-          {/* Etapa 1: Informações do Grupo */}
-          {currentStep === 0 && renderStep1()}
-
-          {/* Etapa 2: Upload de Chat */}
-          {currentStep === 1 && (
-            <div className="space-y-6">
-              <div className="text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
-                  <Upload className="h-6 w-6 text-primary-foreground" />
-                </div>
-                <h3 className="text-lg font-semibold">Upload de Mensagens</h3>
-                <p className="text-sm text-muted-foreground">
-                  Faça upload do arquivo de chat exportado do WhatsApp
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
-                  <input
-                    type="file"
-                    accept=".txt"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="chat-file"
-                  />
-                  <label htmlFor="chat-file" className="cursor-pointer">
-                    <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
-                    <p className="text-sm font-medium">
-                      {file ? file.name : 'Clique para selecionar o arquivo de chat'}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Arquivo .txt exportado do WhatsApp
-                    </p>
-                  </label>
-                </div>
-
-                {file && (
-                  <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span className="text-sm font-medium">{file.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                      </span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setFile(null)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-
-                <div className="flex justify-between pt-4">
-                  <Button variant="outline" onClick={prevStep}>
-                    Voltar
-                  </Button>
-                  <Button
-                    onClick={processWhatsAppChat}
-                    disabled={!file || isProcessing}
-                    className="min-w-[120px]"
-                  >
-                    {isProcessing ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {processingProgress}%
-                      </>
-                    ) : (
-                      <>
-                        Processar
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
-                </div>
-
-                {isProcessing && (
-                  <div className="space-y-2">
-                    <Progress value={processingProgress} className="h-2" />
-                    <p className="text-xs text-muted-foreground text-center">
-                      {processingProgress < 20 && 'Analisando mensagens...'}
-                      {processingProgress >= 20 && processingProgress < 50 && 'Fazendo upload dos arquivos...'}
-                      {processingProgress >= 50 && 'Executando análise dos dados...'}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {currentStep === 0 && renderPlatformSelection()}
+          {currentStep === 1 && renderCommunityForm()}
+          {currentStep === 2 && renderMessageUpload()}
         </div>
       </DialogContent>
     </Dialog>

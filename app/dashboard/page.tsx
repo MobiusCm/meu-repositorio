@@ -275,10 +275,29 @@ export default function DashboardPage() {
       setLoading(true);
       const supabase = createClient();
       
-      // Buscar grupos
+      // Verificar autenticação primeiro
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        console.error('Usuário não autenticado');
+        setStats({
+          totalGroups: 0,
+          totalMessages: 0,
+          activeMembers: 0,
+          engagementRate: 0,
+          weeklyActivity: [],
+          smartInsights: [],
+          topGroups: [],
+          recentActivity: []
+        });
+        return;
+      }
+      
+      // SEGURANÇA: Buscar apenas grupos do usuário autenticado
       const { data: groups } = await supabase
         .from('groups')
-        .select('*');
+        .select('*')
+        .eq('user_id', user.id);
       
       if (!groups || groups.length === 0) {
         setStats({

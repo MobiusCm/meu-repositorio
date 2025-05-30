@@ -18,6 +18,8 @@ export interface Database {
           description: string | null
           member_count: number | null
           last_updated_at: string | null
+          user_id: string
+          platform: string | null
         }
         Insert: {
           id?: string
@@ -27,6 +29,8 @@ export interface Database {
           description?: string | null
           member_count?: number | null
           last_updated_at?: string | null
+          user_id: string
+          platform?: string | null
         }
         Update: {
           id?: string
@@ -36,6 +40,8 @@ export interface Database {
           description?: string | null
           member_count?: number | null
           last_updated_at?: string | null
+          user_id?: string
+          platform?: string | null
         }
       }
       messages_status: {

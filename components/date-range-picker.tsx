@@ -10,11 +10,51 @@ import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
-export function DatePickerWithRange({ className }: React.HTMLAttributes<HTMLDivElement>) {
-  const [date, setDate] = React.useState<DateRange | undefined>({
-    from: new Date(2023, 0, 1),
-    to: new Date(),
-  })
+interface DatePickerWithRangeProps {
+  className?: string;
+  onDateChange?: (range: DateRange | undefined) => void;
+  minDate?: Date | null;
+  maxDate?: Date | null;
+  defaultValue?: DateRange;
+}
+
+export function DatePickerWithRange({ 
+  className, 
+  onDateChange, 
+  minDate, 
+  maxDate, 
+  defaultValue
+}: DatePickerWithRangeProps) {
+  const [date, setDate] = React.useState<DateRange | undefined>(defaultValue);
+
+  // Atualizar quando defaultValue mudar
+  React.useEffect(() => {
+    if (defaultValue) {
+      setDate(defaultValue);
+    }
+  }, [defaultValue]);
+
+  const handleDateChange = (newDate: DateRange | undefined) => {
+    setDate(newDate);
+    if (onDateChange) {
+      onDateChange(newDate);
+    }
+  };
+
+  // Criar datas de disable baseadas no minDate e maxDate
+  const disabledDays = React.useMemo(() => {
+    const disabled: any[] = [];
+    
+    if (minDate) {
+      disabled.push({ before: minDate });
+    }
+    
+    if (maxDate) {
+      disabled.push({ after: maxDate });
+    }
+    
+    return disabled;
+  }, [minDate, maxDate]);
 
   return (
     <div className={cn("grid gap-2", className)}>
@@ -22,20 +62,24 @@ export function DatePickerWithRange({ className }: React.HTMLAttributes<HTMLDivE
         <PopoverTrigger asChild>
           <Button
             id="date"
-            variant={"outline"}
-            className={cn("w-[240px] justify-start text-left font-normal", !date && "text-muted-foreground")}
+            variant="outline"
+            className={cn(
+              "w-[300px] justify-start text-left font-normal",
+              !date && "text-muted-foreground"
+            )}
           >
             <CalendarIcon className="mr-2 h-4 w-4" />
             {date?.from ? (
               date.to ? (
                 <>
-                  {format(date.from, "LLL dd, y")} - {format(date.to, "LLL dd, y")}
+                  {format(date.from, "dd/MM/yyyy")} -{" "}
+                  {format(date.to, "dd/MM/yyyy")}
                 </>
               ) : (
-                format(date.from, "LLL dd, y")
+                format(date.from, "dd/MM/yyyy")
               )
             ) : (
-              <span>Pick a date</span>
+              <span>Selecione o período</span>
             )}
           </Button>
         </PopoverTrigger>
@@ -43,10 +87,11 @@ export function DatePickerWithRange({ className }: React.HTMLAttributes<HTMLDivE
           <Calendar
             initialFocus
             mode="range"
-            defaultMonth={date?.from}
+            defaultMonth={maxDate || new Date()}
             selected={date}
-            onSelect={setDate}
+            onSelect={handleDateChange}
             numberOfMonths={2}
+            disabled={disabledDays}
           />
         </PopoverContent>
       </Popover>

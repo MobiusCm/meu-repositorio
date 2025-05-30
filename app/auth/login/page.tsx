@@ -12,14 +12,14 @@ export default function LoginPage() {
           <p className="text-sm text-muted-foreground">
             Plataforma de análise para WhatsApp
           </p>
-        </div>
+      </div>
 
         {/* Login Card */}
         <Card className="border-0 shadow-sm bg-card">
           <CardContent className="p-6">
-            <LoginForm />
-          </CardContent>
-        </Card>
+          <LoginForm />
+        </CardContent>
+      </Card>
 
         {/* Footer */}
         <div className="text-center">

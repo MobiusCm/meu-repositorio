@@ -1230,4 +1230,41 @@ export const analyzeWhatsAppChatIncremental = async (
       error: error instanceof Error ? error.message : String(error)
     };
   }
+};
+
+// Função wrapper para compatibilidade com o sistema de relatórios
+export const getStats = async (
+  groupId: string,
+  startDate: string,
+  endDate: string
+): Promise<DetailedStats> => {
+  try {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    // Tentar buscar dados pré-processados primeiro
+    const stats = await fetchPreProcessedStats(groupId, start, end);
+    
+    // Se não houver dados, tentar analisar do zero
+    if (stats.total_messages === 0) {
+      console.log('Nenhum dado pré-processado encontrado, iniciando análise...');
+      return await analyzeWhatsAppChat(groupId, start, end);
+    }
+    
+    return stats;
+  } catch (error) {
+    console.error('Erro ao buscar estatísticas:', error);
+    // Retornar objeto vazio em caso de erro
+    return {
+      daily_stats: [],
+      member_stats: [],
+      total_messages: 0,
+      total_words: 0,
+      total_media: 0,
+      active_members: 0,
+      hourly_activity: {},
+      avg_words_per_message: 0,
+      days_analyzed: 0
+    };
+  }
 }; 
