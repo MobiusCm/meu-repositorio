@@ -12,7 +12,18 @@ const nextConfig = {
   
   // Configurações de imagem
   images: {
-    domains: ['localhost'],
+    domains: [
+      'localhost',
+      'pdmnkyiuvyyuobfozlly.supabase.co'
+    ],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'pdmnkyiuvyyuobfozlly.supabase.co',
+        port: '',
+        pathname: '/storage/v1/object/public/**',
+      },
+    ],
   },
   
   // Configurações de redirecionamento
