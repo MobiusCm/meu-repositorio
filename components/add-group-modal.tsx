@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { X, Upload, ArrowRight, Check, Loader2 } from 'lucide-react';
+import { X, Upload, ArrowRight, Check, Loader2, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -28,10 +28,13 @@ import { Progress } from '@/components/ui/progress';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
 import { analyzeWhatsAppChat } from '@/lib/analysis';
+import Image from 'next/image';
 
 // Esquema de validação do formulário
 const formSchema = z.object({
   name: z.string().min(3, 'O nome do grupo deve ter pelo menos 3 caracteres'),
+  description: z.string().optional(),
+  memberCount: z.number().min(0, 'O número de membros deve ser positivo').optional(),
   icon: z.instanceof(File).optional(),
 });
 
@@ -40,6 +43,8 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
   // Estado para controlar as etapas
   const [currentStep, setCurrentStep] = useState(0);
   const [file, setFile] = useState<File | null>(null);
+  const [iconFile, setIconFile] = useState<File | null>(null);
+  const [iconPreview, setIconPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -47,18 +52,21 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
   const [groupId, setGroupId] = useState<string | null>(null);
   const [messagesByDay, setMessagesByDay] = useState<Record<string, string[]>>({});
   const { toast } = useToast();
+  const iconInputRef = useRef<HTMLInputElement>(null);
 
   // Configuração do formulário
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
+      description: '',
+      memberCount: 0,
     },
   });
 
   // Progresso para próxima etapa
   const nextStep = () => {
-    if (currentStep < 2) {
+    if (currentStep < 1) {
       setCurrentStep(currentStep + 1);
     }
   };
@@ -72,9 +80,47 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
 
   // Função para lidar com o upload do ícone
   const handleIconUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const iconFile = e.target.files[0];
-      form.setValue('icon', iconFile);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de arquivo
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: "Arquivo inválido",
+        description: "Por favor, selecione uma imagem (JPG, PNG, GIF ou WebP)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validar tamanho (máximo 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "Arquivo muito grande",
+        description: "A imagem deve ter no máximo 5MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIconFile(file);
+    form.setValue('icon', file);
+    
+    // Criar preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setIconPreview(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeIcon = () => {
+    setIconFile(null);
+    setIconPreview(null);
+    form.setValue('icon', undefined);
+    if (iconInputRef.current) {
+      iconInputRef.current.value = '';
     }
   };
 
@@ -97,6 +143,8 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
         .from('groups')
         .insert({
           name: values.name,
+          description: values.description || null,
+          member_count: values.memberCount || null,
         })
         .select()
         .single();
@@ -107,7 +155,8 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
       // 2. Se tiver ícone, fazer upload para o Storage
       if (values.icon) {
         const fileExt = values.icon.name.split('.').pop();
-        const filePath = `group-icons/${group.id}.${fileExt}`;
+        const fileName = `${group.id}-${Date.now()}.${fileExt}`;
+        const filePath = `groups/${fileName}`;
         
         // Simular progresso de upload
         const interval = setInterval(() => {
@@ -125,10 +174,14 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
           .from('group-icons')
           .upload(filePath, values.icon, {
             cacheControl: '3600',
-            upsert: true,
+            upsert: false,
           });
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          console.error('Erro no upload do ícone:', uploadError);
+          throw new Error(`Falha no upload do ícone: ${uploadError.message || 'Erro desconhecido'}`);
+        }
+        
         clearInterval(interval);
         setUploadProgress(100);
 
@@ -434,210 +487,258 @@ export function AddGroupModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
     }
   };
 
+  // Renderizar etapa 1 - Informações básicas do grupo
+  const renderStep1 = () => (
+    <div className="space-y-6">
+      <div className="text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
+          <Upload className="h-6 w-6 text-primary-foreground" />
+        </div>
+        <h3 className="text-lg font-semibold">Criar Novo Grupo</h3>
+        <p className="text-sm text-muted-foreground">
+          Informe os dados básicos do grupo de WhatsApp
+        </p>
+      </div>
+      
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmitStep1)} className="space-y-4">
+          {/* Upload de Foto */}
+          <div className="space-y-3">
+            <label className="text-sm font-medium">Foto do Grupo</label>
+            <div className="flex items-center space-x-4">
+              <div className="relative">
+                {iconPreview ? (
+                  <div className="relative h-20 w-20 rounded-full overflow-hidden ring-2 ring-background">
+                    <Image
+                      src={iconPreview}
+                      alt="Preview da foto do grupo"
+                      fill
+                      className="object-cover"
+                    />
+                    <button
+                      onClick={removeIcon}
+                      className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:bg-destructive/90 transition-colors"
+                      type="button"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center ring-2 ring-background">
+                    <Camera className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex-1 space-y-2">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={() => iconInputRef.current?.click()}
+                  className="w-full"
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  Selecionar Foto
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  JPG, PNG, GIF ou WebP. Máximo 5MB.
+                </p>
+              </div>
+            </div>
+            
+            <input
+              ref={iconInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+              onChange={handleIconUpload}
+              className="hidden"
+            />
+          </div>
+
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Nome do Grupo *</FormLabel>
+                <FormControl>
+                  <Input placeholder="Ex: Família Silva" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="description"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Descrição</FormLabel>
+                <FormControl>
+                  <Textarea 
+                    placeholder="Descrição opcional do grupo" 
+                    rows={3}
+                    {...field} 
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="memberCount"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Número Total de Membros</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    min="0" 
+                    placeholder="Ex: 25"
+                    value={field.value || ''}
+                    onChange={(e) => field.onChange(Number(e.target.value))}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          
+          <div className="flex justify-end pt-4">
+            <Button 
+              type="submit" 
+              disabled={isUploading}
+              className="min-w-[120px]"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {uploadProgress > 0 ? `${uploadProgress}%` : 'Criando...'}
+                </>
+              ) : (
+                <>
+                  Próximo
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      </Form>
+    </div>
+  );
+
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md md:max-w-xl">
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {currentStep === 0 
-              ? 'Adicionar Novo Grupo' 
-              : currentStep === 1 
-                ? 'Upload de Ícone (Opcional)' 
-                : 'Upload do Arquivo de Chat'}
+            {currentStep === 0 ? 'Novo Grupo' : 'Upload de Mensagens'}
           </DialogTitle>
-          <DialogDescription className="sr-only">
+          <DialogDescription>
             {currentStep === 0 
-              ? 'Formulário para adicionar um novo grupo de WhatsApp' 
-              : currentStep === 1 
-                ? 'Upload de um ícone opcional para o grupo' 
-                : 'Upload do arquivo de chat do WhatsApp para análise'}
+              ? 'Insira as informações básicas do grupo'
+              : 'Faça upload do arquivo de chat exportado do WhatsApp'
+            }
           </DialogDescription>
         </DialogHeader>
 
-        {/* Etapa 1: Nome do Grupo */}
-        {currentStep === 0 && (
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmitStep1)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nome do Grupo</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Digite o nome do grupo" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+        <div className="py-4">
+          {/* Etapa 1: Informações do Grupo */}
+          {currentStep === 0 && renderStep1()}
 
-              <div className="flex justify-end">
-                <Button type="submit" disabled={isUploading}>
-                  {isUploading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Salvando...
-                    </>
-                  ) : (
-                    <>
-                      Próximo
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {isUploading && (
-                <div className="space-y-2">
-                  <Progress value={uploadProgress} className="h-2" />
-                  <p className="text-xs text-muted-foreground text-right">{uploadProgress}%</p>
+          {/* Etapa 2: Upload de Chat */}
+          {currentStep === 1 && (
+            <div className="space-y-6">
+              <div className="text-center">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
+                  <Upload className="h-6 w-6 text-primary-foreground" />
                 </div>
-              )}
-            </form>
-          </Form>
-        )}
-
-        {/* Etapa 2: Upload de Ícone (Opcional) */}
-        {currentStep === 1 && (
-          <div className="space-y-4">
-            <div className="border-2 border-dashed rounded-lg p-6 text-center">
-              <div className="flex flex-col items-center justify-center space-y-4">
-                <div className="rounded-full bg-primary/10 p-3">
-                  <Upload className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium mb-1">Escolha um ícone para o grupo (opcional)</p>
-                  <p className="text-xs text-muted-foreground mb-3">Recomendado: imagem quadrada, máximo 1MB</p>
-                  <div className="flex justify-center">
-                    <Button size="sm" onClick={() => document.getElementById('icon-upload')?.click()}>
-                      Selecionar Imagem
-                    </Button>
-                    <input
-                      id="icon-upload"
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleIconUpload}
-                    />
-                  </div>
-                </div>
-              </div>
-              {form.watch('icon') && (
-                <div className="mt-4 flex items-center justify-center">
-                  <div className="relative h-16 w-16 rounded-full overflow-hidden border">
-                    <img
-                      src={URL.createObjectURL(form.watch('icon') as File)}
-                      alt="Ícone"
-                      className="object-cover w-full h-full"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-between">
-              <Button variant="outline" onClick={prevStep}>
-                Voltar
-              </Button>
-              <Button onClick={nextStep}>
-                {form.watch('icon') ? 'Continuar' : 'Pular esta etapa'}
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Etapa 3: Upload do arquivo de chat */}
-        {currentStep === 2 && (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium">Como exportar o chat do WhatsApp:</h3>
-              <ol className="text-xs text-muted-foreground space-y-1 ml-4 list-decimal">
-                <li>Abra o grupo no WhatsApp</li>
-                <li>Toque nos três pontos no canto superior direito</li>
-                <li>Selecione "Mais" e depois "Exportar conversa"</li>
-                <li>Escolha "SEM MÍDIA"</li>
-                <li>Salve ou compartilhe o arquivo .txt</li>
-              </ol>
-            </div>
-
-            <div className="border-2 border-dashed rounded-lg p-6 text-center">
-              <div className="flex flex-col items-center justify-center space-y-4">
-                <div className="rounded-full bg-primary/10 p-3">
-                  <Upload className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium mb-1">Arraste o arquivo .txt do WhatsApp</p>
-                  <p className="text-xs text-muted-foreground mb-3">Ou clique para selecionar manualmente</p>
-                  <div className="flex justify-center">
-                    <Button size="sm" onClick={() => document.getElementById('chat-upload')?.click()} disabled={isProcessing}>
-                      Selecionar Arquivo
-                    </Button>
-                    <input
-                      id="chat-upload"
-                      type="file"
-                      accept=".txt"
-                      className="hidden"
-                      onChange={handleFileUpload}
-                      disabled={isProcessing}
-                    />
-                  </div>
-                </div>
-              </div>
-              {file && !isProcessing && (
-                <div className="mt-4 p-2 bg-muted rounded flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div className="rounded bg-primary/10 p-1 mr-2">
-                      <FileText className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="text-sm">
-                      <p className="font-medium">{file.name}</p>
-                      <p className="text-xs text-muted-foreground">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                    </div>
-                  </div>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-8 w-8" 
-                    onClick={() => setFile(null)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            {isProcessing ? (
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Processando arquivo de chat...</span>
-                  <span>{processingProgress}%</span>
-                </div>
-                <Progress value={processingProgress} className="h-2" />
-                <p className="text-xs text-muted-foreground">
-                  {processingProgress < 40 
-                    ? 'Analisando mensagens...' 
-                    : processingProgress < 95 
-                      ? 'Salvando mensagens por dia...' 
-                      : 'Concluindo...'}
+                <h3 className="text-lg font-semibold">Upload de Mensagens</h3>
+                <p className="text-sm text-muted-foreground">
+                  Faça upload do arquivo de chat exportado do WhatsApp
                 </p>
               </div>
-            ) : (
-              <div className="flex justify-between">
-                <Button variant="outline" onClick={prevStep}>
-                  Voltar
-                </Button>
-                <Button 
-                  onClick={processWhatsAppChat} 
-                  disabled={!file || !groupId}
-                >
-                  Processar Arquivo
-                </Button>
+
+              <div className="space-y-4">
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                  <input
+                    type="file"
+                    accept=".txt"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="chat-file"
+                  />
+                  <label htmlFor="chat-file" className="cursor-pointer">
+                    <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                    <p className="text-sm font-medium">
+                      {file ? file.name : 'Clique para selecionar o arquivo de chat'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Arquivo .txt exportado do WhatsApp
+                    </p>
+                  </label>
+                </div>
+
+                {file && (
+                  <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-sm font-medium">{file.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFile(null)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+
+                <div className="flex justify-between pt-4">
+                  <Button variant="outline" onClick={prevStep}>
+                    Voltar
+                  </Button>
+                  <Button
+                    onClick={processWhatsAppChat}
+                    disabled={!file || isProcessing}
+                    className="min-w-[120px]"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        {processingProgress}%
+                      </>
+                    ) : (
+                      <>
+                        Processar
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {isProcessing && (
+                  <div className="space-y-2">
+                    <Progress value={processingProgress} className="h-2" />
+                    <p className="text-xs text-muted-foreground text-center">
+                      {processingProgress < 20 && 'Analisando mensagens...'}
+                      {processingProgress >= 20 && processingProgress < 50 && 'Fazendo upload dos arquivos...'}
+                      {processingProgress >= 50 && 'Executando análise dos dados...'}
+                    </p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

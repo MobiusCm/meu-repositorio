@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { Plus, MoreHorizontal, Info, Trash2, AlertCircle } from 'lucide-react';
+import { Plus, MoreHorizontal, Info, Trash2, AlertCircle, Edit } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useState } from 'react';
 import { AddGroupModal } from './add-group-modal';
+import { EditGroupModal } from './edit-group-modal';
 import { Database } from '@/lib/supabase/schema';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
@@ -35,6 +36,7 @@ export function GroupList({ groups }: { groups: Group[] }) {
   const router = useRouter();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
+  const [groupToEdit, setGroupToEdit] = useState<Group | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const { toast } = useToast();
 
@@ -258,6 +260,10 @@ export function GroupList({ groups }: { groups: Group[] }) {
                         <Info className="mr-2 h-4 w-4" />
                         Ver Detalhes
                       </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setGroupToEdit(group)}>
+                        <Edit className="mr-2 h-4 w-4" />
+                        Editar Grupo
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => router.push(`/groups/${group.id}/update`)}>
                         <Plus className="mr-2 h-4 w-4" />
                         Atualizar Dados
@@ -320,6 +326,14 @@ export function GroupList({ groups }: { groups: Group[] }) {
         <AddGroupModal
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
+        />
+      )}
+
+      {groupToEdit && (
+        <EditGroupModal
+          isOpen={!!groupToEdit}
+          onClose={() => setGroupToEdit(null)}
+          group={groupToEdit}
         />
       )}
 
